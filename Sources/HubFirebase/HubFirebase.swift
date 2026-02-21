@@ -10,6 +10,8 @@ public class HubFirebaseIntegration: HubDependencyIntegration {
     private let firebase = HubFirebase()
     public var provider: HubFirebaseProviding { firebase }
     
+    public init() {}
+    
     public func start() {
         firebase.start()
     }
