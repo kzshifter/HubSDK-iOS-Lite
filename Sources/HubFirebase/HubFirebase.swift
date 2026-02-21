@@ -9,6 +9,8 @@ public class HubFirebaseIntegration: HubDependencyIntegration {
     public static var name: String { "Firebase" }
     private let firebase = HubFirebase()
     public var provider: HubFirebaseProviding { firebase }
+
+    public init() {}
     
     public func start() {
         firebase.start()
