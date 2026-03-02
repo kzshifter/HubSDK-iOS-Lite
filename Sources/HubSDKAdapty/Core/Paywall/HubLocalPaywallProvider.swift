@@ -1,27 +1,78 @@
 import Adapty
 import UIKit
 
-// MARK: - LocalPaywallDelegate
+// MARK: - HubLocalPaywallDelegate
 
 /// A delegate for handling user interactions within a local paywall.
 ///
-/// Implement this protocol to receive callbacks when the user interacts
-/// with purchase controls, restoration, or dismissal actions.
+/// The local paywall view controller uses this delegate to **request** actions.
+/// The coordinator performs the actual purchase/restore operations and reports
+/// results back via `HubLocalPaywallStateDelegate`.
+///
+/// This separation ensures that all purchase logic is centralized in the coordinator,
+/// while the local paywall only manages its UI.
 public protocol HubLocalPaywallDelegate: AnyObject {
     
-    /// Called when the user finish a purchase.
+    /// Called when the user taps a purchase button.
     ///
-    /// - Parameter product: The product to purchase.
-    func purchaseLocalPaywallFinish(_ result: AdaptyPurchaseResult, product: AdaptyPaywallProduct)
+    /// The coordinator will execute the purchase and report the result
+    /// back to the view controller via `HubLocalPaywallStateDelegate`.
+    ///
+    /// - Parameter product: The product the user wants to purchase.
+    func localPaywallDidRequestPurchase(product: AdaptyPaywallProduct)
     
-    /// Called when the user requests purchase restoration.
-    func restoreLocalPaywallFinish(_ profile: AdaptyProfile)
+    /// Called when the user taps the restore button.
+    ///
+    /// The coordinator will execute the restore and report the result
+    /// back to the view controller via `HubLocalPaywallStateDelegate`.
+    func localPaywallDidRequestRestore()
     
-    /// Called when the user dismisses the paywall.
-    func closeLocalPaywallAction()
+    /// Called when the user taps close or swipes to dismiss.
+    func localPaywallDidRequestClose()
 }
 
-// MARK: - LocalPaywallProvider
+// MARK: - HubLocalPaywallStateDelegate
+
+/// A delegate the coordinator uses to report operation results back to the local paywall.
+///
+/// Implement this in your local paywall view controller to update UI
+/// in response to purchase/restore lifecycle events (success, failure).
+public protocol HubLocalPaywallStateDelegate: AnyObject {
+    
+    /// Called when a purchase completes.
+    ///
+    /// Use this to update UI based on the result. If `closeOnSuccess` is enabled,
+    /// the coordinator will dismiss the paywall automatically after this call.
+    ///
+    /// - Parameter result: The purchase result (check `isPurchaseSuccess`).
+    func localPaywallDidFinishPurchase(result: AdaptyPurchaseResult)
+    
+    /// Called when a purchase fails.
+    ///
+    /// - Parameter error: The error that occurred.
+    func localPaywallDidFailPurchase(error: Error)
+    
+    /// Called when a restore completes.
+    ///
+    /// - Parameter entry: The access entry with the restored subscription status.
+    func localPaywallDidFinishRestore(entry: AccessEntry)
+    
+    /// Called when a restore fails.
+    ///
+    /// - Parameter error: The error that occurred.
+    func localPaywallDidFailRestore(error: Error)
+}
+
+// MARK: - Default Implementations
+
+public extension HubLocalPaywallStateDelegate {
+    func localPaywallDidFinishPurchase(result: AdaptyPurchaseResult) {}
+    func localPaywallDidFailPurchase(error: Error) {}
+    func localPaywallDidFinishRestore(entry: AccessEntry) {}
+    func localPaywallDidFailRestore(error: Error) {}
+}
+
+// MARK: - HubLocalPaywallProvider
 
 /// A protocol for providing local paywall view controllers.
 ///
@@ -31,16 +82,16 @@ public protocol HubLocalPaywallDelegate: AnyObject {
 /// ## Example Implementation
 ///
 /// ```swift
-/// final class AppPaywallProvider: LocalPaywallProvider {
+/// final class AppPaywallProvider: HubLocalPaywallProvider {
 ///
 ///     func paywallViewController(
 ///         for identifier: String,
 ///         products: [AdaptyPaywallProduct],
-///         delegate: LocalPaywallDelegate
-///     ) -> UIViewController? {
+///         delegate: HubLocalPaywallDelegate
+///     ) -> (UIViewController & HubLocalPaywallStateDelegate)? {
 ///         switch identifier {
 ///         case "main":
-///             return OnboardingPaywallViewController(
+///             return MainPaywallViewController(
 ///                 products: products,
 ///                 delegate: delegate
 ///             )
@@ -59,14 +110,17 @@ public protocol HubLocalPaywallProvider: AnyObject {
     
     /// Creates a view controller for the specified local paywall.
     ///
+    /// The returned view controller must conform to `HubLocalPaywallStateDelegate`
+    /// so the coordinator can report purchase/restore results back to update the UI.
+    ///
     /// - Parameters:
     ///   - identifier: The paywall identifier from remote configuration.
     ///   - products: The products available for purchase.
-    ///   - delegate: The delegate for handling paywall events.
+    ///   - delegate: The delegate for requesting actions (purchase, restore, close).
     /// - Returns: A configured view controller, or `nil` if the identifier is not recognized.
     func paywallViewController(
         for identifier: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate
-    ) -> UIViewController?
+    ) -> (UIViewController & HubLocalPaywallStateDelegate)?
 }

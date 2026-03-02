@@ -7,55 +7,62 @@ import UIKit
 // MARK: - HubPaywallCoordinatorDelegate
 
 /// A delegate for receiving paywall lifecycle and transaction events.
-///
-/// All methods have default empty implementations, so conforming types
-/// only need to implement the events they care about.
 public protocol HubPaywallCoordinatorDelegate: AnyObject {
     
-    /// Called when the paywall is dismissed by the user or programmatically.
+    /// Called when the paywall coordinator dispatches an action.
+    ///
+    /// All paywall events (close, purchase, restore, errors) flow through this single method.
+    /// Use `switch action` to handle specific cases.
     func paywallCoordinator(_ coordinator: HubPaywallCoordinator, didPerformAction action: HubPaywallCoordinator.Action)
 }
-
 
 // MARK: - HubPaywallCoordinator
 
 /// A unified coordinator for fetching, presenting, and managing Adapty paywalls.
 ///
-/// Handles both builder (remote) and local paywalls, purchase/restore flows,
-/// analytics logging, and dismiss logic in a single class.
+/// Uses a hybrid approach: static `resolve()` for dependency injection at app launch,
+/// while each `show()` call creates a new isolated instance with its own lifecycle.
 ///
-/// ## Usage with closure
+/// ## Setup (once at app launch)
 ///
 /// ```swift
-/// let coordinator = HubPaywallCoordinator(sdk: adaptyCore)
+/// HubPaywallCoordinator.resolve(
+///     sdk: adaptyCore,
+///     localPaywallProvider: MyLocalPaywallProvider()
+/// )
+/// ```
 ///
-/// try await coordinator.show(
-///     placementId: "premium_paywall",
+/// ## Usage — fire and forget
+///
+/// ```swift
+/// try await HubPaywallCoordinator.show(
+///     placementId: "premium",
 ///     from: viewController,
-///     config: .init(presentType: .present, closeOnSuccess: true)
+///     config: .init(presentType: .present)
 /// ) { action in
 ///     switch action {
-///     case .close:
-///         print("Paywall closed")
-///     case .purchase(let result):
-///         print("Purchase: \(result)")
-///     case .restore(let entry):
-///         print("Restore: \(entry)")
+///     case .close: print("closed")
+///     case .purchase(let r): print("purchased: \(r.isPurchaseSuccess)")
+///     case .purchaseFailed(_, let e): print("purchase error: \(e)")
+///     case .restore(let e): print("restored: \(e.isActive)")
+///     case .restoreFailed(let e): print("restore error: \(e)")
 ///     }
 /// }
 /// ```
 ///
-/// ## Usage with delegate
+/// ## Usage — with dismiss control
 ///
 /// ```swift
-/// let coordinator = HubPaywallCoordinator(sdk: adaptyCore)
-/// coordinator.delegate = self
-///
-/// try await coordinator.show(
-///     placementId: "premium_paywall",
+/// let coordinator = try await HubPaywallCoordinator.show(
+///     placementId: "premium",
 ///     from: viewController,
-///     config: .init(presentType: .present)
-/// )
+///     config: .init(closeOnSuccess: false)
+/// ) { action in
+///     // handle actions
+/// }
+///
+/// // Later:
+/// coordinator.dismiss()
 /// ```
 @MainActor
 public final class HubPaywallCoordinator {
@@ -64,25 +71,86 @@ public final class HubPaywallCoordinator {
     
     /// Represents all possible outcomes from a paywall flow.
     public enum Action {
-        /// The paywall was dismissed (user tapped close or dismiss was called programmatically).
+        /// The paywall was dismissed (user tapped close or auto-closed after success).
         case close
         
-        /// A purchase completed (success or cancellation — check `result.isPurchaseSuccess`).
+        /// A purchase completed (check `result.isPurchaseSuccess` for success/cancellation).
         case purchase(result: AdaptyPurchaseResult)
         
         /// A purchase failed with an error.
-        case purchaseFailed(product: any AdaptyPaywallProduct, error: AdaptyError)
+        case purchaseFailed(product: any AdaptyPaywallProduct, error: Error)
         
         /// A restore completed.
         case restore(entry: AccessEntry)
         
         /// A restore failed with an error.
-        case restoreFailed(error: AdaptyError)
+        case restoreFailed(error: Error)
     }
     
     public typealias ActionHandler = (Action) -> Void
     
-    // MARK: - Properties
+    // MARK: - Static Dependencies
+    
+    private static var _sdk: (any HubSDKAdaptyProviding & Sendable)?
+    private static var _localPaywallProvider: (any HubLocalPaywallProvider)?
+    
+    /// Registers SDK dependencies for all future paywall presentations.
+    ///
+    /// Call this once during app initialization (e.g., in `AppDelegate` or your DI setup).
+    ///
+    /// - Parameters:
+    ///   - sdk: The HubSDK instance for Adapty operations.
+    ///   - localPaywallProvider: Optional provider for local (non-builder) paywall view controllers.
+    public static func resolve(
+        sdk: any HubSDKAdaptyProviding & Sendable,
+        localPaywallProvider: (any HubLocalPaywallProvider)? = nil
+    ) {
+        _sdk = sdk
+        _localPaywallProvider = localPaywallProvider
+    }
+    
+    // MARK: - Static Show
+    
+    /// Fetches and presents a paywall, returning the coordinator instance for optional lifecycle control.
+    ///
+    /// Each call creates a new isolated coordinator with its own state.
+    /// The coordinator retains itself while the paywall is presented and auto-releases on dispose.
+    ///
+    /// - Parameters:
+    ///   - placementId: The placement identifier from the Adapty Dashboard.
+    ///   - viewController: The view controller to present from.
+    ///   - config: Presentation and behavior configuration.
+    ///   - onAction: Optional closure called for each paywall action.
+    /// - Returns: The coordinator instance. Retain it only if you need external dismiss control.
+    /// - Throws: `HubSDKError.notInitialized` if `resolve()` has not been called.
+    /// - Throws: `HubSDKError.placementNotFound` if placement does not exist.
+    @discardableResult
+    public static func show(
+        placementId: String,
+        from viewController: UIViewController,
+        config: HubPaywallPresentConfiguration = .init(),
+        onAction: ActionHandler? = nil
+    ) async throws -> HubPaywallCoordinator {
+        guard let sdk = _sdk else {
+            throw HubSDKError.notInitialized
+        }
+        
+        let coordinator = HubPaywallCoordinator(
+            sdk: sdk,
+            localPaywallProvider: _localPaywallProvider
+        )
+        
+        try await coordinator.performShow(
+            placementId: placementId,
+            from: viewController,
+            config: config,
+            onAction: onAction
+        )
+        
+        return coordinator
+    }
+    
+    // MARK: - Instance Properties
     
     private let sdk: any HubSDKAdaptyProviding & Sendable
     private let localPaywallProvider: (any HubLocalPaywallProvider)?
@@ -92,49 +160,52 @@ public final class HubPaywallCoordinator {
     private var currentPresentConfig: HubPaywallPresentConfiguration?
     private var actionHandler: ActionHandler?
     
+    /// Reference to the local paywall for reporting purchase/restore results back to its UI.
+    private weak var localPaywallStateDelegate: HubLocalPaywallStateDelegate?
+    
+    /// Self-retention to keep the coordinator alive while the paywall is on screen.
+    /// Released in `dispose()` when the paywall is dismissed.
+    private var retainedSelf: HubPaywallCoordinator?
+    
     /// Optional delegate for receiving paywall events.
-    /// Can be used instead of or alongside the closure-based `actionHandler`.
+    /// Can be used alongside the closure-based `onAction`.
     public weak var delegate: HubPaywallCoordinatorDelegate?
     
     // MARK: - Init
     
-    /// Creates a new paywall coordinator.
-    ///
-    /// - Parameters:
-    ///   - sdk: The HubSDK instance for Adapty operations.
-    ///   - localPaywallProvider: Optional provider for local (non-builder) paywall view controllers.
-    public init(
+    private init(
         sdk: any HubSDKAdaptyProviding & Sendable,
-        localPaywallProvider: (any HubLocalPaywallProvider)? = nil
+        localPaywallProvider: (any HubLocalPaywallProvider)?
     ) {
         self.sdk = sdk
         self.localPaywallProvider = localPaywallProvider
     }
     
-    // MARK: - Show
+    // MARK: - Dismiss
     
-    /// Fetches and presents the appropriate paywall for the specified placement.
+    /// Dismisses the currently presented paywall.
     ///
-    /// Determines whether to show a builder or local paywall based on the placement
-    /// configuration, then presents it using the specified presentation config.
-    ///
-    /// - Parameters:
-    ///   - placementId: The placement identifier from the Adapty Dashboard.
-    ///   - viewController: The view controller to present from.
-    ///   - config: Presentation configuration (present/push, animation, dismiss behavior).
-    ///   - onAction: Optional closure called for each paywall action (close, purchase, restore).
-    /// - Throws: `HubSDKError.notInitialized` if SDK is not ready.
-    /// - Throws: `HubSDKError.placementNotFound` if placement does not exist.
-    /// - Throws: `HubSDKError.localPaywallProviderNotSet` if local paywall required but no provider set.
-    /// - Throws: `HubSDKError.localPaywallNotFound` if local paywall identifier not found.
-    public func show(
+    /// Respects the `dismissEnable` flag from the presentation configuration.
+    /// Dispatches `.close` and releases all resources.
+    public func dismiss() {
+        guard currentPresentConfig?.dismissEnable ?? true else { return }
+        
+        performDismiss()
+        dispatch(.close)
+        dispose()
+    }
+    
+    // MARK: - Private: Show Flow
+    
+    private func performShow(
         placementId: String,
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration,
-        onAction: ActionHandler? = nil
+        onAction: ActionHandler?
     ) async throws {
         self.actionHandler = onAction
         self.currentPresentConfig = config
+        self.retainedSelf = self
         
         let entry = try await sdk.placementEntryAsync(with: placementId)
         self.currentEntry = entry
@@ -145,25 +216,6 @@ public final class HubPaywallCoordinator {
         case .local(let identifier):
             await sdk.logPaywall(with: entry.paywall)
             try showLocalPaywall(identifier: identifier, entry: entry, from: viewController, config: config)
-        }
-    }
-    
-    // MARK: - Dismiss
-    
-    /// Dismisses the currently presented paywall.
-    ///
-    /// Respects the `dismissEnable` flag from the presentation configuration.
-    /// Uses the same presentation type (present/push) to determine how to dismiss.
-    public func dismiss() {
-        guard currentPresentConfig?.dismissEnable ?? true else { return }
-        
-        let animated = currentPresentConfig?.animationEnable ?? false
-        
-        switch currentPresentConfig?.presentType {
-        case .present, .none:
-            presentedViewController?.dismiss(animated: animated)
-        case .push:
-            presentedViewController?.navigationController?.popViewController(animated: animated)
         }
     }
     
@@ -199,6 +251,10 @@ public final class HubPaywallCoordinator {
             throw HubSDKError.localPaywallNotFound(identifier)
         }
         
+        // The returned VC conforms to HubLocalPaywallStateDelegate —
+        // store it so we can report purchase/restore results back to its UI.
+        localPaywallStateDelegate = controller
+        
         presentedViewController = controller
         presentViewController(controller, from: viewController, config: config)
     }
@@ -226,6 +282,21 @@ public final class HubPaywallCoordinator {
         }
     }
     
+    // MARK: - Private: Dismiss & Cleanup
+    
+    private func performDismiss() {
+        guard currentPresentConfig?.dismissEnable ?? true else { return }
+        
+        let animated = currentPresentConfig?.animationEnable ?? false
+        
+        switch currentPresentConfig?.presentType {
+        case .present, .none:
+            presentedViewController?.dismiss(animated: animated)
+        case .push:
+            presentedViewController?.navigationController?.popViewController(animated: animated)
+        }
+    }
+    
     // MARK: - Private: Action Dispatch
     
     /// Single point for dispatching all actions through both closure and delegate.
@@ -237,21 +308,27 @@ public final class HubPaywallCoordinator {
     /// Handles auto-close logic after successful purchase or restore.
     private func handleSuccessIfNeeded() {
         guard currentPresentConfig?.closeOnSuccess ?? true else { return }
-        dismiss()
+        performDismiss()
         dispatch(.close)
         dispose()
     }
     
+    /// Releases all references and breaks the self-retention cycle.
     private func dispose() {
         presentedViewController = nil
         currentEntry = nil
         currentPresentConfig = nil
         actionHandler = nil
+        localPaywallStateDelegate = nil
+        retainedSelf = nil
     }
     
-    // MARK: - Private: Validation
+    // MARK: - Private: Purchase Handling
     
+    /// Processes a successful purchase result.
+    /// Notifies local paywall UI, dispatches action, handles auto-close if needed.
     private func handlePurchaseResult(_ result: AdaptyPurchaseResult, product: any AdaptyPaywallProduct) {
+        localPaywallStateDelegate?.localPaywallDidFinishPurchase(result: result)
         dispatch(.purchase(result: result))
         
         if result.isPurchaseSuccess {
@@ -262,15 +339,31 @@ public final class HubPaywallCoordinator {
         }
     }
     
-    private func handleRestore() {
-        Task {
-            let entry = await sdk.validateSubscription()
-            dispatch(.restore(entry: entry))
-            
-            if entry.isActive {
-                handleSuccessIfNeeded()
-            }
+    /// Processes a purchase failure.
+    /// Notifies local paywall UI and dispatches error action.
+    private func handlePurchaseFailure(product: any AdaptyPaywallProduct, error: Error) {
+        localPaywallStateDelegate?.localPaywallDidFailPurchase(error: error)
+        dispatch(.purchaseFailed(product: product, error: error))
+    }
+    
+    // MARK: - Private: Restore Handling
+    
+    /// Processes a successful restore.
+    /// Notifies local paywall UI, dispatches action, handles auto-close if active.
+    private func handleRestoreSuccess(entry: AccessEntry) {
+        localPaywallStateDelegate?.localPaywallDidFinishRestore(entry: entry)
+        dispatch(.restore(entry: entry))
+        
+        if entry.isActive {
+            handleSuccessIfNeeded()
         }
+    }
+    
+    /// Processes a restore failure.
+    /// Notifies local paywall UI and dispatches error action.
+    private func handleRestoreFailure(error: Error) {
+        localPaywallStateDelegate?.localPaywallDidFailRestore(error: error)
+        dispatch(.restoreFailed(error: error))
     }
 }
 
@@ -284,7 +377,7 @@ extension HubPaywallCoordinator: AdaptyPaywallControllerDelegate {
     ) {
         switch action {
         case .close:
-            dismiss()
+            performDismiss()
             dispatch(.close)
             dispose()
         default:
@@ -304,7 +397,10 @@ extension HubPaywallCoordinator: AdaptyPaywallControllerDelegate {
         _ controller: AdaptyPaywallController,
         didFinishRestoreWith profile: AdaptyProfile
     ) {
-        handleRestore()
+        Task {
+            let entry = await sdk.validateSubscription()
+            handleRestoreSuccess(entry: entry)
+        }
     }
     
     public func paywallController(
@@ -312,14 +408,14 @@ extension HubPaywallCoordinator: AdaptyPaywallControllerDelegate {
         didFailPurchase product: any AdaptyPaywallProduct,
         error: AdaptyError
     ) {
-        dispatch(.purchaseFailed(product: product, error: error))
+        handlePurchaseFailure(product: product, error: error)
     }
     
     public func paywallController(
         _ controller: AdaptyPaywallController,
         didFailRestoreWith error: AdaptyError
     ) {
-        dispatch(.restoreFailed(error: error))
+        handleRestoreFailure(error: error)
     }
 }
 
@@ -327,16 +423,41 @@ extension HubPaywallCoordinator: AdaptyPaywallControllerDelegate {
 
 extension HubPaywallCoordinator: @preconcurrency HubLocalPaywallDelegate {
     
-    public func purchaseLocalPaywallFinish(_ result: AdaptyPurchaseResult, product: AdaptyPaywallProduct) {
-        handlePurchaseResult(result, product: product)
+    /// Local paywall requested a purchase — coordinator executes it via SDK
+    /// and reports back through `HubLocalPaywallStateDelegate`.
+    ///
+    /// Lifecycle: sdk.purchase → result/error callback.
+    public func localPaywallDidRequestPurchase(product: AdaptyPaywallProduct) {
+        
+        Task {
+            do {
+                let result = try await sdk.purchase(with: product)
+                handlePurchaseResult(result, product: product)
+            } catch {
+                handlePurchaseFailure(product: product, error: error)
+            }
+        }
     }
     
-    public func restoreLocalPaywallFinish(_ profile: AdaptyProfile) {
-        handleRestore()
+    /// Local paywall requested a restore — coordinator executes it via SDK
+    /// and reports back through `HubLocalPaywallStateDelegate`.
+    ///
+    /// Lifecycle: sdk.restore → result/error callback.
+    public func localPaywallDidRequestRestore() {
+        
+        Task {
+            do {
+                let access = try await sdk.restore()
+                handleRestoreSuccess(entry: access)
+            } catch {
+                handleRestoreFailure(error: error)
+            }
+        }
     }
     
-    public func closeLocalPaywallAction() {
-        dismiss()
+    /// Local paywall requested close.
+    public func localPaywallDidRequestClose() {
+        performDismiss()
         dispatch(.close)
         dispose()
     }

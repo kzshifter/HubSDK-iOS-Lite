@@ -151,6 +151,8 @@ public protocol HubSDKAdaptyProviding: Sendable {
     /// - Throws: `StormSDKError.restoreFailed` if restoration fails.
     func restore(for accessLevels: [AccessLevel]) async throws -> AccessEntry
     
+    func restore() async throws -> AccessEntry
+    
     // MARK: Analytics
     
     /// Logs a paywall impression for the specified placement.
@@ -261,6 +263,10 @@ public protocol HubSDKAdaptyProviding: Sendable {
     ///   - completion: A closure called on the main thread with the result.
     func restore(
         for accessLevels: [AccessLevel],
+        completion: @MainActor @Sendable @escaping (Result<AccessEntry, Error>) -> Void
+    )
+    
+    func restore(
         completion: @MainActor @Sendable @escaping (Result<AccessEntry, Error>) -> Void
     )
     

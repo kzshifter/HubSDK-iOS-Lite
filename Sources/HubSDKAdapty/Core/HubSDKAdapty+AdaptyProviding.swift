@@ -144,6 +144,11 @@ extension HubSDKAdapty: HubSDKAdaptyProviding {
         }
     }
     
+    public func restore() async throws -> AccessEntry {
+        let accessLevels = try self.ensureReady().0.accessLevels
+        return try await self.restore(for: accessLevels)
+    }
+    
     // MARK: Analytics
     
     public func logPaywall(from placementId: String) async {
@@ -213,6 +218,14 @@ extension HubSDKAdapty: HubSDKAdaptyProviding {
             } catch {
                 await MainActor.run { completion(.failure(error)) }
             }
+        }
+    }
+    
+    nonisolated
+    func restore(completion: @escaping @MainActor (Result<AccessEntry, any Error>) -> Void) {
+        Task {
+            let accessLevels = try await self.ensureReady().0.accessLevels
+            restore(for: accessLevels, completion: completion)
         }
     }
 }
