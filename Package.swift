@@ -93,6 +93,17 @@ let package = Package(
                 ]
             ),
         
-            .target(name: "HubIntegrationCore")
+            .target(name: "HubIntegrationCore"),
+
+        // MARK: - Tests
+
+        .testTarget(
+            name: "HubIntegrationCoreTests",
+            dependencies: ["HubIntegrationCore"]
+        ),
+        .testTarget(
+            name: "HubSDKCoreTests",
+            dependencies: ["HubSDKCore", "HubIntegrationCore"]
+        )
     ]
 )
