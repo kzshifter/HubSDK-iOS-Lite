@@ -3,7 +3,8 @@
     "allow": [
       "Bash(for dir:*)",
       "Bash(swift build:*)",
-      "Bash(xcodebuild:*)"
+      "Bash(xcodebuild:*)",
+      "Bash(xcrun simctl:*)"
     ]
   }
 }

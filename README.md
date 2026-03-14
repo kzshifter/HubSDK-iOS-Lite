@@ -16,7 +16,7 @@
 | Модуль | Описание |
 |--------|----------|
 | `HubSDKCore` | Ядро SDK — регистрация и управление интеграциями |
-| `HubSDKAdapty` | Подписки, Paywall, Remote Config (Adapty) |
+| `HubSDKAdapty` | Подписки, Paywall, Onboarding, Remote Config (Adapty) |
 | `HubGoogleAds` | Реклама: Interstitial, Rewarded, Banner, AppOpen |
 | `HubAppsflyer` | Атрибуция установок (AppsFlyer) |
 | `HubSkarb` | Аналитика (Skarb) |
@@ -58,7 +58,7 @@ dependencies: [
 
 ## 🚀 Quick Start
 
-### Инициализация SDK
+### 1. Инициализация SDK
 
 ```swift
 import HubSDKCore
@@ -70,12 +70,11 @@ import HubFacebook
 
 final class ApplicationDependency {
     static let shared = ApplicationDependency()
-    
-    // Провайдеры для доступа к интерфейсам
+
     var adaptyCore: HubSDKAdaptyProviding?
     var googleAdsCore: HubGoogleAdsProviding?
     var appsflyerCore: HubAppsflyerProviding?
-    
+
     func start(completion: @escaping () -> Void) {
         Task {
             // 1️⃣ Регистрируем интеграции
@@ -88,7 +87,7 @@ final class ApplicationDependency {
                 )),
                 awaitReady: true
             )
-            
+
             await HubSDKCore.shared.register(
                 HubGoogleAdsIntegration(config: .init(
                     interstitialKey: "ca-app-pub-xxx/xxx",
@@ -97,38 +96,54 @@ final class ApplicationDependency {
                 )),
                 awaitReady: true
             )
-            
+
             await HubSDKCore.shared.register(
                 HubAppsflyerIntegration(config: .init(
                     devkey: "YOUR_AF_DEV_KEY",
                     appId: "YOUR_APPLE_ID"
                 ))
             )
-            
+
             await HubSDKCore.shared.register(
                 HubSkarbIntegration(config: .init(clientId: "your_client"))
             )
-            
+
             await HubSDKCore.shared.register(
                 HubFacebookIntegration(config: .init())
             )
-            
+
             // 2️⃣ Запускаем
             await HubSDKCore.shared.run(with: UIApplication.shared)
-            
+
             // 3️⃣ Ждём готовности
             await HubSDKCore.shared.waitUntilReady()
-            
+
             // 4️⃣ Сохраняем провайдеры
             self.adaptyCore = await HubSDKCore.shared.adapty
             self.googleAdsCore = await HubSDKCore.shared.googleAds
             self.appsflyerCore = await HubSDKCore.shared.appsflyer
-            
+
             completion()
         }
     }
 }
 ```
+
+### 2. Настройка Paywall координатора
+
+После инициализации SDK зарегистрируйте зависимости для `HubPaywallCoordinator`:
+
+```swift
+// В completion start() или после waitUntilReady()
+if let adapty = ApplicationDependency.shared.adaptyCore {
+    HubPaywallCoordinator.resolve(
+        sdk: adapty,
+        localPaywallProvider: AppLocalPaywallProvider() // опционально
+    )
+}
+```
+
+> `resolve()` вызывается **один раз** при старте. После этого `HubPaywallCoordinator.show(...)` готов к использованию в любом месте приложения.
 
 ---
 
@@ -137,121 +152,120 @@ final class ApplicationDependency {
 ### Интерфейс `HubSDKAdaptyProviding`
 
 ```swift
+let adapty = ApplicationDependency.shared.adaptyCore
+
 // Быстрая проверка подписки (кэш)
-adaptyCore.hasActiveSubscription  // Bool
+adapty?.hasActiveSubscription  // Bool
 
 // Полная валидация с сервером
-let access = await adaptyCore.validateSubscription()
-access.isActive      // Bool
-access.isRenewable   // Bool
+let access = await adapty?.validateSubscription()
+access?.isActive      // Bool
+access?.isRenewable   // Bool
 
 // Получение placement
-let entry = adaptyCore.placementEntry(with: "main_placement")
+let entry = adapty?.placementEntry(with: "main_placement")
 entry?.products      // [AdaptyPaywallProduct]
 entry?.paywall       // AdaptyPaywall
 entry?.identifier    // .builder или .local("identifier")
 
 // Remote Config
 struct MyConfig: Codable { ... }
-let config: MyConfig? = adaptyCore.remoteConfig(for: "main_placement")
+let config: MyConfig? = adapty?.remoteConfig(for: "main_placement")
 
 // Покупка
-let result = try await adaptyCore.purchase(with: product)
-result.isPurchaseSuccess  // Bool
+let result = try await adapty?.purchase(with: product)
+result?.isPurchaseSuccess  // Bool
 
 // Восстановление покупок
-let restored = try await adaptyCore.restore(for: [.premium])
+let restored = try await adapty?.restore(for: [.premium])
+// или с дефолтными accessLevels из конфигурации:
+let restored = try await adapty?.restore()
 ```
 
-### Показ Paywall
-
-Рекомендуемый паттерн — создать координатор:
+### Ленивая загрузка плейсментов
 
 ```swift
-// AppPaywallCoordinator.swift
-@MainActor
-final class AppPaywallCoordinator {
-    
-    enum Action {
-        case close
-        case finishPurchase(status: AdaptyPurchaseResult)
-        case finishRestore(status: AccessEntry)
-    }
-    
-    typealias ActionHandler = (Action) -> Void
-    
-    private var presenter: HubPaywallPresenter?
-    private var actionHandler: ActionHandler = { _ in }
-    
-    static func build() -> AppPaywallCoordinator {
-        AppPaywallCoordinator(
-            core: ApplicationDependency.shared.adaptyCore,
-            localProvider: AppLocalPaywallCoordinator()
-        )
-    }
-    
-    private init(core: HubSDKAdaptyProviding?, localProvider: HubLocalPaywallProvider) {
-        guard let core else { return }
-        self.presenter = HubPaywallPresenter(sdk: core, localPaywallProvider: localProvider)
-        self.presenter?.delegate = self
-    }
-    
-    @discardableResult
-    func actionHandler(_ handler: @escaping ActionHandler) -> Self {
-        self.actionHandler = handler
-        return self
-    }
-    
-    func show(placementId: String,
-              from viewController: UIViewController? = nil,
-              config: HubPaywallPresentConfiguration) {
-        Task {
-            try await presenter?.showPaywall(
-                placementId: placementId,
-                from: viewController ?? rootViewController!,
-                config: config
-            )
+// Загрузить плейсменты после инициализации
+let entries = try await adapty?.loadPlacements(["promo_placement"])
+
+// Получить плейсмент с автозагрузкой если не кэширован
+let entry = try await adapty?.placementEntry(for: "promo", loadIfNeeded: true)
+
+// Проверить, загружен ли плейсмент
+let isLoaded = adapty?.isPlacementLoaded("promo") ?? false
+```
+
+---
+
+### 🎯 Показ Paywall — `HubPaywallCoordinator`
+
+Координатор управляет полным циклом paywall: загрузка, показ, покупка, восстановление, закрытие.
+
+#### Fire-and-forget
+
+```swift
+try await HubPaywallCoordinator.show(
+    placementId: "premium",
+    from: viewController
+) { action in
+    switch action {
+    case .close:
+        print("Paywall закрыт")
+    case .purchase(let result):
+        if result.isPurchaseSuccess {
+            self.unlockPremium()
         }
-    }
-}
-
-extension AppPaywallCoordinator: HubPaywallCoordinatorDelegate {
-    func paywallCoordinatorDidClose(_ coordinator: HubPaywallPresenter) {
-        actionHandler(.close)
-    }
-    
-    func paywallCoordinator(_ coordinator: HubPaywallPresenter, 
-                            didFinishPurchaseWith result: AdaptyPurchaseResult) {
-        actionHandler(.finishPurchase(status: result))
-    }
-    
-    func paywallCoordinator(_ coordinator: HubPaywallPresenter, 
-                            didFinishRestoreWith entry: AccessEntry) {
-        actionHandler(.finishRestore(status: entry))
+    case .purchaseFailed(_, let error):
+        print("Ошибка покупки: \(error)")
+    case .restore(let entry):
+        if entry.isActive {
+            self.unlockPremium()
+        }
+    case .restoreFailed(let error):
+        print("Ошибка восстановления: \(error)")
     }
 }
 ```
 
-**Использование:**
+#### С контролем dismiss
 
 ```swift
-AppPaywallCoordinator
-    .build()
-    .actionHandler { action in
+let coordinator = try await HubPaywallCoordinator.show(
+    placementId: "premium",
+    from: viewController,
+    config: .init(closeOnSuccess: false)
+) { action in
+    // обработка событий
+}
+
+// Закрыть вручную позже:
+coordinator.dismiss()
+```
+
+#### Через делегат
+
+```swift
+let coordinator = try await HubPaywallCoordinator.show(
+    placementId: "premium",
+    from: viewController
+)
+coordinator.delegate = self
+
+// Реализуйте HubPaywallCoordinatorDelegate:
+extension MyController: HubPaywallCoordinatorDelegate {
+    func paywallCoordinator(
+        _ coordinator: HubPaywallCoordinator,
+        didPerformAction action: HubPaywallCoordinator.Action
+    ) {
         switch action {
-        case .close:
-            self.startMain()
-        case .finishPurchase(let result):
-            if result.isPurchaseSuccess {
-                self.unlockPremium()
-            }
-        case .finishRestore(let entry):
-            if entry.isActive {
-                self.unlockPremium()
-            }
+        case .close: ...
+        case .purchase(let result): ...
+        case .purchaseFailed(_, let error): ...
+        case .restore(let entry): ...
+        case .restoreFailed(let error): ...
         }
     }
-    .show(placementId: "main_placement", config: .init(dissmissEnable: false))
+}
 ```
 
 ### Конфигурация Paywall
@@ -260,23 +274,28 @@ AppPaywallCoordinator
 HubPaywallPresentConfiguration(
     presentType: .present,    // .present (модально) или .push (в navigation)
     animationEnable: true,    // Анимация перехода
-    dissmissEnable: true      // Разрешить закрытие по кнопке
+    dismissEnable: true,      // Разрешить закрытие по кнопке
+    closeOnSuccess: true      // Автоматически закрыть после успешной покупки/восстановления
 )
 ```
 
-### Локальные Paywall
+---
 
-Для кастомных UI реализуйте `HubLocalPaywallProvider`:
+### 🖌 Локальные Paywall
+
+Для кастомных UI реализуйте два протокола:
+
+**1. `HubLocalPaywallProvider`** — фабрика view controller'ов:
 
 ```swift
-final class AppLocalPaywallCoordinator: HubLocalPaywallProvider {
-    
+final class AppLocalPaywallProvider: HubLocalPaywallProvider {
+
     func paywallViewController(
         for identifier: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate
-    ) -> UIViewController? {
-        
+    ) -> (UIViewController & HubLocalPaywallStateDelegate)? {
+
         switch identifier {
         case "main":
             return MainPaywallViewController(products: products, delegate: delegate)
@@ -289,31 +308,58 @@ final class AppLocalPaywallCoordinator: HubLocalPaywallProvider {
 }
 ```
 
-В вашем ViewController вызывайте делегат:
+**2. `HubLocalPaywallDelegate`** — запросы действий из view controller:
 
 ```swift
-// При покупке
-delegate.purchaseLocalPaywallFinish(result, product: product)
+// Пользователь нажал кнопку покупки
+delegate.localPaywallDidRequestPurchase(product: product)
 
-// При восстановлении
-delegate.restoreLocalPaywallFinish(profile)
+// Пользователь нажал "Восстановить"
+delegate.localPaywallDidRequestRestore()
 
-// При закрытии
-delegate.closeLocalPaywallAction()
+// Пользователь закрыл paywall
+delegate.localPaywallDidRequestClose()
 ```
+
+**3. `HubLocalPaywallStateDelegate`** — координатор уведомляет ваш VC о результатах:
+
+```swift
+class MainPaywallViewController: UIViewController, HubLocalPaywallStateDelegate {
+
+    func localPaywallDidFinishPurchase(result: AdaptyPurchaseResult) {
+        // Обновить UI после покупки
+    }
+
+    func localPaywallDidFailPurchase(error: Error) {
+        showError(error)
+    }
+
+    func localPaywallDidFinishRestore(entry: AccessEntry) {
+        // Обновить UI после восстановления
+    }
+
+    func localPaywallDidFailRestore(error: Error) {
+        showError(error)
+    }
+}
+```
+
+> **Архитектура:** ваш VC *запрашивает* действия через `HubLocalPaywallDelegate`, а координатор *сообщает результаты* через `HubLocalPaywallStateDelegate`. Вся логика покупок централизована в координаторе.
+
+---
 
 ### Хелперы для продуктов
 
 ```swift
 // Форматирование цены
-product.descriptionPrice()                    // "$9.99"
-product.descriptionPrice(multiplicatorValue: 0.25)  // "$2.50" (недельная цена от месячной)
+product.descriptionPrice()                           // "$9.99"
+product.descriptionPrice(multiplicatorValue: 0.25)   // "$2.50"
 
 // Период подписки
-product.descriptionPeriod()                   // "month"
-product.descriptionPeriod(isAdaptiveName: true)  // "monthly"
+product.descriptionPeriod()                          // "month"
+product.descriptionPeriod(isAdaptiveName: true)      // "monthly"
 
-// Замена плейсхолдеров в тексте
+// Замена плейсхолдеров
 let text = "Subscribe for %subscriptionPrice% per %subscriptionPeriod%"
 product.replacingPlaceholders(in: text)
 // → "Subscribe for $9.99 per month"
@@ -327,18 +373,107 @@ product.replacingPlaceholders(
 
 ---
 
+## 🎓 Onboarding (HubSDKAdapty)
+
+SDK предоставляет интеграцию с Adapty Onboarding — визуальный конструктор онбординга.
+
+### Closure-based API (рекомендуется)
+
+```swift
+let adapty = ApplicationDependency.shared.adaptyCore!
+
+let (controller, proxy) = try await adapty.onboardingController(
+    for: "onboarding_placement"
+) { action in
+    switch action {
+    case .close:
+        self.dismiss(animated: true)
+        self.showMainScreen()
+
+    case .openPaywall(let paywallAction):
+        try? await HubPaywallCoordinator.show(
+            placementId: paywallAction.actionId,
+            from: self,
+            config: .init(dismissEnable: false)
+        )
+
+    case .custom(let customAction):
+        print("Custom action: \(customAction.actionId)")
+
+    case .stateUpdated(let state):
+        print("User input: \(state)")
+
+    case .didFinishLoading:
+        print("Onboarding loaded")
+
+    case .analytics(let event):
+        print("Analytics: \(event)")
+
+    case .error(let error):
+        print("Error: \(error)")
+    }
+}
+
+// ⚠️ Важно: сохраните proxy — он выступает делегатом контроллера
+self.onboardingProxy = proxy
+present(controller, animated: true)
+```
+
+### Delegate-based API
+
+```swift
+let controller = try await adapty.onboardingController(
+    for: "onboarding_placement",
+    delegate: self  // AdaptyOnboardingControllerDelegate
+)
+present(controller, animated: true)
+```
+
+### Ручная загрузка
+
+```swift
+// Загрузить onboarding data + конфигурацию
+let entry = try await adapty.onboardingEntry(for: "onboarding_placement")
+
+// Для ускорения (без персонализации):
+let entry = try await adapty.onboardingEntryForDefaultAudience(for: "onboarding_placement")
+
+// Создать контроллер из entry
+let controller = try AdaptyUI.onboardingController(
+    with: entry.configuration,
+    delegate: self
+)
+```
+
+### Placeholder при загрузке
+
+```swift
+let (controller, proxy) = try await adapty.onboardingController(
+    for: "onboarding_placement",
+    locale: "en",
+    placeholder: {
+        let view = UIView()
+        view.backgroundColor = .black
+        return view
+    },
+    onAction: { action in ... }
+)
+```
+
+---
+
 ## 📺 Реклама (HubGoogleAds)
 
 ### Info.plist
 
-> ⚠️ **Обязательно** добавьте в `Info.plist` вашего приложения:
+> ⚠️ **Обязательно** добавьте в `Info.plist`:
 
 ```xml
 <key>GADApplicationIdentifier</key>
 <string>ca-app-pub-XXXXXXXXXXXXXXXX~XXXXXXXXXX</string>
 ```
 
-Также рекомендуется добавить для iOS 14+:
+Также рекомендуется для iOS 14+:
 
 ```xml
 <key>SKAdNetworkItems</key>
@@ -351,7 +486,7 @@ product.replacingPlaceholders(
 </array>
 ```
 
-### Интерфейс `HubGoogleAdsProviding`
+### Показ рекламы
 
 ```swift
 let ads = ApplicationDependency.shared.googleAdsCore
@@ -362,45 +497,32 @@ ads?.isRewardedReady      // Bool
 ads?.isAppOpenReady       // Bool
 ```
 
-### Показ рекламы
-
 **Interstitial:**
 ```swift
-// Async
 await ads?.showInterstitial(from: viewController)
 
-// Callback
+// Или с callback:
 ads?.showInterstitial(from: viewController) {
-    // Реклама закрыта
     self.continueFlow()
 }
 ```
 
 **Rewarded:**
 ```swift
-// Async
 let rewarded = await ads?.showRewarded(from: viewController)
 if rewarded == true {
     self.giveReward()
 }
 
-// Callback
+// Или с callback:
 ads?.showRewarded(from: viewController) { rewarded in
-    if rewarded {
-        self.giveReward()
-    }
+    if rewarded { self.giveReward() }
 }
 ```
 
 **App Open:**
 ```swift
-// В SceneDelegate или при возврате в приложение
 await ads?.showAppOpen(from: viewController)
-
-// Или с callback
-ads?.showAppOpen { 
-    self.continueLoading()
-}
 ```
 
 **Banner:**
@@ -427,22 +549,19 @@ HubGoogleAdsConfiguration(
 **Типы рекламы для ожидания:**
 ```swift
 .interstitial
-.rewarded  
+.rewarded
 .appOpen
 .all        // Все типы
-.none       // Не ждать
+.none       // Не ждать (по умолчанию)
 ```
 
 ---
 
 ## 📊 AppsFlyer (HubAppsflyer)
 
-### Интерфейс `HubAppsflyerProviding`
-
 ```swift
 let appsflyer = ApplicationDependency.shared.appsflyerCore
 
-// Получение conversion data
 let data = appsflyer?.conversionData
 let mediaSource = data?["media_source"] as? String ?? "organic"
 let campaign = data?["campaign"] as? String
@@ -463,14 +582,12 @@ HubAppsflyerConfiguration(
 
 ## 📈 Аналитика (HubAnalytics)
 
-Универсальный трекер событий, который отправляет в **все** подключённые сервисы (AppsFlyer, Facebook, Firebase).
+Универсальный трекер — отправляет во **все** подключённые сервисы (AppsFlyer, Facebook, Firebase).
 
 ```swift
-// Трек события
 HubAnalytics.trackEvent(name: "button_clicked")
 HubAnalytics.trackEvent(name: "level_complete", params: ["level": 5])
 
-// Трек покупки (автоматически отправляется во все сервисы)
 HubAnalytics.trackSuccessPurchase(amount: 9.99, currency: "USD")
 ```
 
@@ -480,7 +597,7 @@ HubAnalytics.trackSuccessPurchase(amount: 9.99, currency: "USD")
 
 ### Info.plist
 
-> ⚠️ **Обязательно** добавьте в `Info.plist` вашего приложения:
+> ⚠️ **Обязательно** добавьте в `Info.plist`:
 
 ```xml
 <key>FacebookClientToken</key>
@@ -500,13 +617,11 @@ HubFacebookConfiguration(
 )
 ```
 
-Facebook автоматически получает события покупок и кастомные события через Event Bus.
+> Facebook автоматически получает события покупок и кастомные события через Event Bus.
 
 ---
 
 ## 📡 Skarb (HubSkarb)
-
-### Интерфейс `HubSkarbProviding`
 
 ```swift
 let skarb = HubSDKCore.shared.integration(ofType: HubSkarbIntegration.self)?.provider
@@ -528,36 +643,57 @@ HubSkarbConfiguration(
 )
 ```
 
-> **Note:** Skarb автоматически получает conversion data от AppsFlyer через Event Bus.
+> Skarb автоматически получает conversion data от AppsFlyer через Event Bus.
 
 ---
 
 ## 🔄 Event Bus
 
-Модули автоматически обмениваются данными. Вы можете подписаться на события:
+Модули обмениваются данными через `HubEventBus`. Подписаться на события:
 
 ```swift
 class MyListener: HubEventListener {
     init() {
         HubEventBus.shared.subscribe(self)
     }
-    
+
     deinit {
         HubEventBus.shared.unsubscribe(self)
     }
-    
+
     func handle(event: HubEvent) {
         switch event {
         case .conversionDataReceived(let data):
+            // Данные атрибуции от AppsFlyer
             print("Attribution: \(data)")
+
         case .successPurchase(let amount, let currency):
+            // Успешная покупка (отправляется автоматически)
             print("Purchase: \(amount) \(currency)")
+
         case .event(let name, let params):
+            // Кастомное событие
             print("Event: \(name)")
         }
     }
 }
 ```
+
+**Какие модули публикуют события:**
+
+| Событие | Источник |
+|---------|----------|
+| `.conversionDataReceived` | `HubAppsflyer` — после получения conversion data |
+| `.successPurchase` | `HubSDKAdapty` — после успешной покупки, `HubPaywallCoordinator` — после покупки через paywall |
+| `.event` | `HubAnalytics` — при вызове `trackEvent` |
+
+**Какие модули слушают события:**
+
+| Модуль | Реагирует на |
+|--------|-------------|
+| `HubSkarb` | `.conversionDataReceived` — отправляет source данные |
+| `HubFacebook` | `.successPurchase`, `.event` — трекает в Facebook |
+| `HubFirebase` | `.successPurchase`, `.event` — трекает в Firebase |
 
 ---
 
@@ -574,7 +710,7 @@ StormSDKAdaptyConfiguration(
     logLevel: .verbose | .error,       // Уровень логов
     chinaClusterEnable: true,          // Китайский кластер
     fallbackName: "fallback",          // Имя fallback JSON (опционально)
-    languageCode: "en"                 // Код языка для локализации
+    languageCode: "en"                 // Код языка для локализации (по умолчанию — из Locale)
 )
 ```
 
@@ -595,57 +731,104 @@ enum AccessLevel {
 // AppDelegate.swift
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-    func application(_ application: UIApplication,
-                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
         ApplicationDependency.shared.start {
-            // SDK готов
+            // Настраиваем Paywall координатор
+            if let adapty = ApplicationDependency.shared.adaptyCore {
+                HubPaywallCoordinator.resolve(
+                    sdk: adapty,
+                    localPaywallProvider: AppLocalPaywallProvider()
+                )
+            }
             self.showOnboarding()
         }
-        
         return true
     }
 }
 
 // OnboardingViewController.swift
 class OnboardingViewController: UIViewController {
-    
-    func showPaywall() {
-        AppPaywallCoordinator
-            .build()
-            .actionHandler { [weak self] action in
+    private var onboardingProxy: OnboardingDelegateProxy?
+
+    func showOnboarding() {
+        guard let adapty = ApplicationDependency.shared.adaptyCore else { return }
+
+        Task {
+            let (controller, proxy) = try await adapty.onboardingController(
+                for: "onboarding_placement"
+            ) { [weak self] action in
                 switch action {
                 case .close:
+                    self?.dismiss(animated: true)
                     self?.goToMain()
-                case .finishPurchase(let result):
-                    if result.isPurchaseSuccess {
-                        self?.goToMain()
+                case .openPaywall(let paywallAction):
+                    guard let self else { return }
+                    try? await HubPaywallCoordinator.show(
+                        placementId: paywallAction.actionId,
+                        from: self,
+                        config: .init(dismissEnable: false)
+                    ) { action in
+                        if case .purchase(let result) = action, result.isPurchaseSuccess {
+                            self.goToMain()
+                        }
                     }
                 default:
                     break
                 }
             }
-            .show(placementId: "onboarding_placement", config: .init(dissmissEnable: false))
+
+            self.onboardingProxy = proxy
+            present(controller, animated: true)
+        }
+    }
+
+    func showPaywall() {
+        Task {
+            try await HubPaywallCoordinator.show(
+                placementId: "main_placement",
+                from: self,
+                config: .init(dismissEnable: false)
+            ) { [weak self] action in
+                switch action {
+                case .close:
+                    self?.goToMain()
+                case .purchase(let result):
+                    if result.isPurchaseSuccess { self?.goToMain() }
+                default:
+                    break
+                }
+            }
+        }
     }
 }
 
-// SettingsViewController.swift  
+// SettingsViewController.swift
 class SettingsViewController: UIViewController {
-    
+
     @IBAction func restoreTapped() {
         Task {
-            let entry = try? await ApplicationDependency.shared.adaptyCore?.restore(for: [.premium])
+            let entry = try? await ApplicationDependency.shared.adaptyCore?.restore()
             if entry?.isActive == true {
                 showAlert("Purchases restored!")
             }
         }
     }
-    
+
+    @IBAction func upgradeTapped() {
+        Task {
+            try await HubPaywallCoordinator.show(
+                placementId: "settings_placement",
+                from: self
+            )
+        }
+    }
+
     @IBAction func watchAdTapped() {
         ApplicationDependency.shared.googleAdsCore?.showRewarded(from: self) { rewarded in
-            if rewarded {
-                self.giveBonus()
-            }
+            if rewarded { self.giveBonus() }
         }
     }
 }
