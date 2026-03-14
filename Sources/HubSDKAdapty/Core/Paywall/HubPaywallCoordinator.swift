@@ -431,7 +431,7 @@ extension HubPaywallCoordinator: @preconcurrency HubLocalPaywallDelegate {
         
         Task {
             do {
-                let result = try await sdk.purchase(with: product)
+                let result = try await sdk.purchase(with: product, trackEvent: false)
                 handlePurchaseResult(result, product: product)
             } catch {
                 handlePurchaseFailure(product: product, error: error)

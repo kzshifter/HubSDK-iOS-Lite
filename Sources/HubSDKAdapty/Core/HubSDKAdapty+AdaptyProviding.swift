@@ -102,22 +102,24 @@ extension HubSDKAdapty: HubSDKAdaptyProviding {
     
     // MARK: Purchase Operations
     
-    public func purchase(with product: any AdaptyPaywallProduct) async throws -> AdaptyPurchaseResult {
+    public func purchase(with product: any AdaptyPaywallProduct, trackEvent: Bool) async throws -> AdaptyPurchaseResult {
         let (config, _) = try ensureReady()
-        
+
         do {
             let result = try await Adapty.makePurchase(product: product)
-            
+
             if result.isPurchaseSuccess {
                 await refreshSubscriptionStatus(for: config.accessLevels)
-                
-                let amount = product.price
-                let currencyCode = product.currencyCode ?? ""
-                HubEventBus.shared.publish(.successPurchase(amount: amount.doubleValue, currency: currencyCode))
+
+                if trackEvent {
+                    let amount = product.price
+                    let currencyCode = product.currencyCode ?? ""
+                    HubEventBus.shared.publish(.successPurchase(amount: amount.doubleValue, currency: currencyCode))
+                }
             }
-            
+
             return result
-            
+
         } catch {
             throw HubSDKError.purchaseFailed(error)
         }

@@ -134,11 +134,14 @@ public protocol HubSDKAdaptyProviding: Sendable {
     /// This method handles the complete purchase flow including StoreKit interaction
     /// and receipt validation with Adapty servers.
     ///
-    /// - Parameter product: The product to purchase.
+    /// - Parameters:
+    ///   - product: The product to purchase.
+    ///   - trackEvent: If `true`, publishes a `successPurchase` event to `HubEventBus`.
+    ///     Set to `false` when the caller handles event tracking independently (e.g., `HubPaywallCoordinator`).
     /// - Returns: The purchase result containing transaction details.
     /// - Throws: `StormSDKError.notInitialized` if SDK is not ready.
     /// - Throws: `StormSDKError.purchaseFailed` if the purchase fails.
-    func purchase(with product: any AdaptyPaywallProduct) async throws -> AdaptyPurchaseResult
+    func purchase(with product: any AdaptyPaywallProduct, trackEvent: Bool) async throws -> AdaptyPurchaseResult
     
     /// Restores previously purchased subscriptions.
     ///
@@ -323,7 +326,13 @@ public protocol HubSDKAdaptyProviding: Sendable {
 // MARK: - Default Parameter Values
 
 public extension HubSDKAdaptyProviding {
-    
+
+    // Purchase convenience overload with default trackEvent
+
+    func purchase(with product: any AdaptyPaywallProduct) async throws -> AdaptyPurchaseResult {
+        try await purchase(with: product, trackEvent: true)
+    }
+
     // Onboarding convenience overloads with default locale
     
     func onboardingEntry(for placementId: String) async throws -> OnboardingEntry {

@@ -98,7 +98,7 @@ extension HubSDKAdapty {
             onAction: onAction,
             placeholder: placeholder
         )
-        
+
         let controller = try AdaptyUI.onboardingController(
             with: entry.configuration,
             delegate: proxy
