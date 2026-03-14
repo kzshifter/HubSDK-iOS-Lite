@@ -89,7 +89,7 @@ public struct StormSDKAdaptyConfiguration: Sendable {
         logLevel: AdaptyLog.Level = .verbose,
         chinaClusterEnable: Bool = true,
         fallbackName: String? = nil,
-        languageCode: String = Locale.current.identifier
+        languageCode: String = Locale.current.languageCode ?? "en"
     ) {
         self.apiKey = apiKey
         self.placementIdentifers = placementIdentifers

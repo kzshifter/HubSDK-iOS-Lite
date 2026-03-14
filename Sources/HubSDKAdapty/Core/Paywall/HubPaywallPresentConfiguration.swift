@@ -1,22 +1,26 @@
 import Foundation
 
 public struct HubPaywallPresentConfiguration: Sendable {
-    let presentType: PresentType
-    let animationEnable: Bool
-    let dissmissEnable: Bool
-    
-    public init(presentType: PresentType = .push,
-                animationEnable: Bool = true,
-                dissmissEnable: Bool = true) {
-        self.presentType = presentType
-        self.animationEnable = animationEnable
-        self.dissmissEnable = dissmissEnable
-    }
-    
-    //MARK: Types
     
     public enum PresentType: Sendable {
-        case push
         case present
+        case push
+    }
+    
+    public let presentType: PresentType
+    public let animationEnable: Bool
+    public let dismissEnable: Bool
+    public let closeOnSuccess: Bool
+    
+    public init(
+        presentType: PresentType = .present,
+        animationEnable: Bool = true,
+        dismissEnable: Bool = true,
+        closeOnSuccess: Bool = true
+    ) {
+        self.presentType = presentType
+        self.animationEnable = animationEnable
+        self.dismissEnable = dismissEnable
+        self.closeOnSuccess = closeOnSuccess
     }
 }
