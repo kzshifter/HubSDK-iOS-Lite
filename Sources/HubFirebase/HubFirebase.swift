@@ -12,8 +12,6 @@ public class HubFirebaseIntegration: HubDependencyIntegration {
 
     public init() {}
     
-    public init() {}
-    
     public func start() {
         firebase.start()
     }
