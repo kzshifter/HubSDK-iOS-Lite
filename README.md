@@ -294,11 +294,14 @@ final class AppLocalPaywallProvider: HubLocalPaywallProvider {
     func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
-        delegate: HubLocalPaywallDelegate
+        delegate: HubLocalPaywallDelegate,
+        configuration: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) -> HubLocalPaywallHandle? {
         switch identifier {
         case "main":
             let vm = MainPaywallViewModel(products: products, delegate: delegate)
+            vm.isCanPopBack = userInfo["isCanPopBack"] as? Bool ?? false
             let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
             return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
         case "special":

@@ -90,9 +90,12 @@ public extension HubLocalPaywallStateDelegate {
 ///     func makePaywall(
 ///         for identifier: String,
 ///         products: [AdaptyPaywallProduct],
-///         delegate: HubLocalPaywallDelegate
+///         delegate: HubLocalPaywallDelegate,
+///         configuration: HubPaywallPresentConfiguration,
+///         userInfo: [String: Any]
 ///     ) -> HubLocalPaywallHandle? {
 ///         let vm = PaywallViewModel(products: products, delegate: delegate)
+///         vm.isCanPopBack = userInfo["isCanPopBack"] as? Bool ?? false
 ///         let vc = UIHostingController(rootView: PaywallView(viewModel: vm))
 ///         return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
 ///     }
@@ -107,7 +110,9 @@ public extension HubLocalPaywallStateDelegate {
 ///     func makePaywall(
 ///         for identifier: String,
 ///         products: [AdaptyPaywallProduct],
-///         delegate: HubLocalPaywallDelegate
+///         delegate: HubLocalPaywallDelegate,
+///         configuration: HubPaywallPresentConfiguration,
+///         userInfo: [String: Any]
 ///     ) -> HubLocalPaywallHandle? {
 ///         let coordinator = PaywallCoordinator(products: products, delegate: delegate)
 ///         let handle = HubLocalPaywallHandle(
@@ -127,11 +132,15 @@ public protocol HubLocalPaywallProvider: AnyObject {
     ///   - identifier: The paywall identifier from remote configuration.
     ///   - products: The products available for purchase.
     ///   - delegate: The delegate for requesting actions (purchase, restore, close).
+    ///   - configuration: The presentation configuration (present type, dismiss policy, etc.).
+    ///   - userInfo: Arbitrary app-specific data passed from the `show()` call site.
     /// - Returns: A handle containing the view controller and optional state delegate,
     ///   or `nil` if the identifier is not recognized.
     func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
-        delegate: HubLocalPaywallDelegate
+        delegate: HubLocalPaywallDelegate,
+        configuration: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) -> HubLocalPaywallHandle?
 }

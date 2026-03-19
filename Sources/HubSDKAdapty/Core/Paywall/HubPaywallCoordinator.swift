@@ -129,24 +129,26 @@ public final class HubPaywallCoordinator {
         placementId: String,
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration = .init(),
+        userInfo: [String: Any] = [:],
         onAction: ActionHandler? = nil
     ) async throws -> HubPaywallCoordinator {
         guard let sdk = _sdk else {
             throw HubSDKError.notInitialized
         }
-        
+
         let coordinator = HubPaywallCoordinator(
             sdk: sdk,
             localPaywallProvider: _localPaywallProvider
         )
-        
+
         try await coordinator.performShow(
             placementId: placementId,
             from: viewController,
             config: config,
+            userInfo: userInfo,
             onAction: onAction
         )
-        
+
         return coordinator
     }
     
@@ -204,21 +206,22 @@ public final class HubPaywallCoordinator {
         placementId: String,
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration,
+        userInfo: [String: Any],
         onAction: ActionHandler?
     ) async throws {
         self.actionHandler = onAction
         self.currentPresentConfig = config
         self.retainedSelf = self
-        
+
         let entry = try await sdk.placementEntryAsync(with: placementId)
         self.currentEntry = entry
-        
+
         switch entry.identifier {
         case .builder:
             try await showBuilderPaywall(entry: entry, from: viewController, config: config)
         case .local(let identifier):
             await sdk.logPaywall(with: entry.paywall)
-            try showLocalPaywall(identifier: identifier, entry: entry, from: viewController, config: config)
+            try showLocalPaywall(identifier: identifier, entry: entry, from: viewController, config: config, userInfo: userInfo)
         }
     }
     
@@ -240,7 +243,8 @@ public final class HubPaywallCoordinator {
         identifier: String,
         entry: PlacementEntry,
         from viewController: UIViewController,
-        config: HubPaywallPresentConfiguration
+        config: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) throws {
         guard let provider = localPaywallProvider else {
             throw HubSDKError.localPaywallProviderNotSet
@@ -249,7 +253,9 @@ public final class HubPaywallCoordinator {
         guard let handle = provider.makePaywall(
             for: identifier,
             products: entry.products,
-            delegate: self
+            delegate: self,
+            configuration: config,
+            userInfo: userInfo
         ) else {
             throw HubSDKError.localPaywallNotFound(identifier)
         }

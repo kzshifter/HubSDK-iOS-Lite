@@ -184,11 +184,14 @@ final class AppLocalPaywallProvider: HubLocalPaywallProvider {
     func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
-        delegate: HubLocalPaywallDelegate
+        delegate: HubLocalPaywallDelegate,
+        configuration: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) -> HubLocalPaywallHandle? {
         switch identifier {
         case "main":
             let vm = MainPaywallViewModel(products: products, delegate: delegate)
+            vm.isCanPopBack = userInfo["isCanPopBack"] as? Bool ?? false
             let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
             return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
 
@@ -212,6 +215,7 @@ final class MainPaywallViewModel: ObservableObject, HubLocalPaywallStateDelegate
 
     @Published var isPurchasing = false
     @Published var purchaseSuccess = false
+    var isCanPopBack = false
 
     init(products: [AdaptyPaywallProduct], delegate: HubLocalPaywallDelegate) {
         self.products = products
@@ -267,7 +271,9 @@ final class MVCLocalPaywallProvider: HubLocalPaywallProvider {
     func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
-        delegate: HubLocalPaywallDelegate
+        delegate: HubLocalPaywallDelegate,
+        configuration: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) -> HubLocalPaywallHandle? {
         let vc = SimplePaywallViewController(products: products, delegate: delegate)
         return HubLocalPaywallHandle(viewController: vc, stateDelegate: vc)
@@ -288,7 +294,9 @@ final class CoordinatorLocalPaywallProvider: HubLocalPaywallProvider {
     func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
-        delegate: HubLocalPaywallDelegate
+        delegate: HubLocalPaywallDelegate,
+        configuration: HubPaywallPresentConfiguration,
+        userInfo: [String: Any]
     ) -> HubLocalPaywallHandle? {
         let vm = MainPaywallViewModel(products: products, delegate: delegate)
         let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
