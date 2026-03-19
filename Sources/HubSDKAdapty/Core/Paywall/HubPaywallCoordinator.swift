@@ -162,6 +162,9 @@ public final class HubPaywallCoordinator {
     
     /// Reference to the local paywall for reporting purchase/restore results back to its UI.
     private weak var localPaywallStateDelegate: HubLocalPaywallStateDelegate?
+
+    /// Custom dismiss handler provided by the local paywall handle.
+    private var localPaywallOnDismiss: (() -> Void)?
     
     /// Self-retention to keep the coordinator alive while the paywall is on screen.
     /// Released in `dispose()` when the paywall is dismissed.
@@ -242,21 +245,20 @@ public final class HubPaywallCoordinator {
         guard let provider = localPaywallProvider else {
             throw HubSDKError.localPaywallProviderNotSet
         }
-        
-        guard let controller = provider.paywallViewController(
+
+        guard let handle = provider.makePaywall(
             for: identifier,
             products: entry.products,
             delegate: self
         ) else {
             throw HubSDKError.localPaywallNotFound(identifier)
         }
-        
-        // The returned VC conforms to HubLocalPaywallStateDelegate —
-        // store it so we can report purchase/restore results back to its UI.
-        localPaywallStateDelegate = controller
-        
-        presentedViewController = controller
-        presentViewController(controller, from: viewController, config: config)
+
+        localPaywallStateDelegate = handle.stateDelegate
+        localPaywallOnDismiss = handle.onDismiss
+
+        presentedViewController = handle.viewController
+        presentViewController(handle.viewController, from: viewController, config: config)
     }
     
     private func presentViewController(
@@ -286,9 +288,14 @@ public final class HubPaywallCoordinator {
     
     private func performDismiss() {
         guard currentPresentConfig?.dismissEnable ?? true else { return }
-        
+
+        if let onDismiss = localPaywallOnDismiss {
+            onDismiss()
+            return
+        }
+
         let animated = currentPresentConfig?.animationEnable ?? false
-        
+
         switch currentPresentConfig?.presentType {
         case .present, .none:
             presentedViewController?.dismiss(animated: animated)
@@ -320,6 +327,7 @@ public final class HubPaywallCoordinator {
         currentPresentConfig = nil
         actionHandler = nil
         localPaywallStateDelegate = nil
+        localPaywallOnDismiss = nil
         retainedSelf = nil
     }
     

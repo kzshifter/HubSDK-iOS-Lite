@@ -4,7 +4,8 @@
       "Bash(for dir:*)",
       "Bash(swift build:*)",
       "Bash(xcodebuild:*)",
-      "Bash(xcrun simctl:*)"
+      "Bash(xcrun simctl:*)",
+      "Bash(find /Users/ios-ivanchanka/Desktop/WorkProjects/AppstormApps/HubSDK/Example -type f -name *.swift)"
     ]
   }
 }

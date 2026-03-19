@@ -172,8 +172,162 @@ func quickShow(from vc: UIViewController) {
 }
 
 
+// ============================================================================
+// MARK: 5. Local Paywall Provider — MVVM / SwiftUI
+// ============================================================================
+
+/// ViewModel получает products и delegate типизированно.
+/// stateDelegate указывает на ViewModel — он получает результаты purchase/restore.
+@MainActor
+final class AppLocalPaywallProvider: HubLocalPaywallProvider {
+
+    func makePaywall(
+        for identifier: String,
+        products: [AdaptyPaywallProduct],
+        delegate: HubLocalPaywallDelegate
+    ) -> HubLocalPaywallHandle? {
+        switch identifier {
+        case "main":
+            let vm = MainPaywallViewModel(products: products, delegate: delegate)
+            let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
+            return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
+
+        case "special":
+            let vm = SpecialPaywallViewModel(products: products, delegate: delegate)
+            let vc = UIHostingController(rootView: SpecialPaywallView(viewModel: vm))
+            return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
+
+        default:
+            return nil
+        }
+    }
+}
+
+/// ViewModel: запрашивает действия через delegate, получает результаты через HubLocalPaywallStateDelegate.
+@MainActor
+final class MainPaywallViewModel: ObservableObject, HubLocalPaywallStateDelegate {
+
+    let products: [AdaptyPaywallProduct]
+    private let delegate: HubLocalPaywallDelegate
+
+    @Published var isPurchasing = false
+    @Published var purchaseSuccess = false
+
+    init(products: [AdaptyPaywallProduct], delegate: HubLocalPaywallDelegate) {
+        self.products = products
+        self.delegate = delegate
+    }
+
+    // MARK: - User Actions → delegate запросы
+
+    func purchase(_ product: AdaptyPaywallProduct) {
+        isPurchasing = true
+        delegate.localPaywallDidRequestPurchase(product: product)
+    }
+
+    func restore() {
+        isPurchasing = true
+        delegate.localPaywallDidRequestRestore()
+    }
+
+    func close() {
+        delegate.localPaywallDidRequestClose()
+    }
+
+    // MARK: - HubLocalPaywallStateDelegate — результаты от координатора
+
+    func localPaywallDidFinishPurchase(result: AdaptyPurchaseResult) {
+        isPurchasing = false
+        purchaseSuccess = result.isPurchaseSuccess
+    }
+
+    func localPaywallDidFailPurchase(error: Error) {
+        isPurchasing = false
+    }
+
+    func localPaywallDidFinishRestore(entry: AccessEntry) {
+        isPurchasing = false
+        purchaseSuccess = entry.isActive
+    }
+
+    func localPaywallDidFailRestore(error: Error) {
+        isPurchasing = false
+    }
+}
+
+
+// ============================================================================
+// MARK: 6. Local Paywall Provider — MVC
+// ============================================================================
+
+/// В MVC ViewController сам является stateDelegate.
+@MainActor
+final class MVCLocalPaywallProvider: HubLocalPaywallProvider {
+
+    func makePaywall(
+        for identifier: String,
+        products: [AdaptyPaywallProduct],
+        delegate: HubLocalPaywallDelegate
+    ) -> HubLocalPaywallHandle? {
+        let vc = SimplePaywallViewController(products: products, delegate: delegate)
+        return HubLocalPaywallHandle(viewController: vc, stateDelegate: vc)
+    }
+}
+
+
+// ============================================================================
+// MARK: 7. Local Paywall Provider — Coordinator
+// ============================================================================
+
+/// Координатор создаёт VC, управляет dismiss через onDismiss.
+@MainActor
+final class CoordinatorLocalPaywallProvider: HubLocalPaywallProvider {
+
+    weak var navigationController: UINavigationController?
+
+    func makePaywall(
+        for identifier: String,
+        products: [AdaptyPaywallProduct],
+        delegate: HubLocalPaywallDelegate
+    ) -> HubLocalPaywallHandle? {
+        let vm = MainPaywallViewModel(products: products, delegate: delegate)
+        let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
+
+        let handle = HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
+
+        // Кастомный dismiss — координатор сам управляет навигацией
+        handle.onDismiss = { [weak navigationController] in
+            navigationController?.popViewController(animated: true)
+        }
+
+        return handle
+    }
+}
+
+
 // MARK: - Helpers
 
 extension Notification.Name {
     static let premiumActivated = Notification.Name("premiumActivated")
+}
+
+// MARK: - Stubs (для компиляции примеров)
+
+import SwiftUI
+
+private struct MainPaywallView: View {
+    @ObservedObject var viewModel: MainPaywallViewModel
+    var body: some View { EmptyView() }
+}
+private struct SpecialPaywallView: View {
+    @ObservedObject var viewModel: SpecialPaywallViewModel
+    var body: some View { EmptyView() }
+}
+@MainActor
+private final class SpecialPaywallViewModel: ObservableObject, HubLocalPaywallStateDelegate {
+    init(products: [AdaptyPaywallProduct], delegate: HubLocalPaywallDelegate) {}
+}
+private final class SimplePaywallViewController: UIViewController, HubLocalPaywallStateDelegate {
+    init(products: [AdaptyPaywallProduct], delegate: HubLocalPaywallDelegate) { super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError() }
 }

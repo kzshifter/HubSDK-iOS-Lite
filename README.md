@@ -283,55 +283,65 @@ HubPaywallPresentConfiguration(
 
 ### 🖌 Локальные Paywall
 
-Для кастомных UI реализуйте два протокола:
+`HubLocalPaywallHandle` разделяет view controller и state delegate, позволяя использовать любую архитектуру (MVC, MVVM, Coordinator, VIPER).
 
-**1. `HubLocalPaywallProvider`** — фабрика view controller'ов:
+**1. `HubLocalPaywallProvider`** — фабрика paywall-сцен:
 
 ```swift
+// MVVM / SwiftUI
 final class AppLocalPaywallProvider: HubLocalPaywallProvider {
 
-    func paywallViewController(
+    func makePaywall(
         for identifier: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate
-    ) -> (UIViewController & HubLocalPaywallStateDelegate)? {
-
+    ) -> HubLocalPaywallHandle? {
         switch identifier {
         case "main":
-            return MainPaywallViewController(products: products, delegate: delegate)
+            let vm = MainPaywallViewModel(products: products, delegate: delegate)
+            let vc = UIHostingController(rootView: MainPaywallView(viewModel: vm))
+            return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
         case "special":
-            return SpecialOfferViewController(products: products, delegate: delegate)
+            let vm = SpecialViewModel(products: products, delegate: delegate)
+            let vc = UIHostingController(rootView: SpecialView(viewModel: vm))
+            return HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
         default:
             return nil
         }
     }
 }
+
+// MVC — ViewController сам является stateDelegate
+let vc = PaywallViewController(products: products, delegate: delegate)
+return HubLocalPaywallHandle(viewController: vc, stateDelegate: vc)
+
+// Coordinator — кастомный dismiss
+let handle = HubLocalPaywallHandle(viewController: vc, stateDelegate: vm)
+handle.onDismiss = { [weak coordinator] in coordinator?.finish() }
+return handle
 ```
 
-**2. `HubLocalPaywallDelegate`** — запросы действий из view controller:
+**2. `HubLocalPaywallDelegate`** — запросы действий (purchase, restore, close):
 
 ```swift
-// Пользователь нажал кнопку покупки
+// ViewModel или VC запрашивает действия через delegate
 delegate.localPaywallDidRequestPurchase(product: product)
-
-// Пользователь нажал "Восстановить"
 delegate.localPaywallDidRequestRestore()
-
-// Пользователь закрыл paywall
 delegate.localPaywallDidRequestClose()
 ```
 
-**3. `HubLocalPaywallStateDelegate`** — координатор уведомляет ваш VC о результатах:
+**3. `HubLocalPaywallStateDelegate`** — координатор сообщает результаты:
 
 ```swift
-class MainPaywallViewController: UIViewController, HubLocalPaywallStateDelegate {
+// Реализуйте на любом объекте: ViewModel, VC, Presenter, Coordinator
+class MainPaywallViewModel: ObservableObject, HubLocalPaywallStateDelegate {
 
     func localPaywallDidFinishPurchase(result: AdaptyPurchaseResult) {
         // Обновить UI после покупки
     }
 
     func localPaywallDidFailPurchase(error: Error) {
-        showError(error)
+        // Показать ошибку
     }
 
     func localPaywallDidFinishRestore(entry: AccessEntry) {
@@ -339,12 +349,12 @@ class MainPaywallViewController: UIViewController, HubLocalPaywallStateDelegate 
     }
 
     func localPaywallDidFailRestore(error: Error) {
-        showError(error)
+        // Показать ошибку
     }
 }
 ```
 
-> **Архитектура:** ваш VC *запрашивает* действия через `HubLocalPaywallDelegate`, а координатор *сообщает результаты* через `HubLocalPaywallStateDelegate`. Вся логика покупок централизована в координаторе.
+> **Архитектура:** `stateDelegate` может быть любым объектом — ViewModel, ViewController, Presenter, Coordinator. Если `stateDelegate = nil`, результаты приходят только через `HubPaywallCoordinator.Action`. Если задан `onDismiss`, координатор вызовет его вместо стандартного dismiss.
 
 ---
 
