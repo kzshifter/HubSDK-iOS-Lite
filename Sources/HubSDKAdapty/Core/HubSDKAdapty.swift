@@ -4,9 +4,9 @@ import Foundation
 import HubIntegrationCore
 import UIKit
 
-// MARK: - StormSDKAdapty
+// MARK: - HubSDKAdapty
 
-/// The main implementation of the Storm SDK Adapty wrapper.
+/// The main implementation of the Hub SDK Adapty wrapper.
 ///
 /// This actor provides thread-safe access to Adapty functionality with
 /// automatic state management and caching for synchronous access patterns.
@@ -14,7 +14,7 @@ import UIKit
 /// ## Usage
 ///
 /// ```swift
-/// let sdk = StormSDKAdapty()
+/// let sdk = HubSDKAdapty()
 ///
 /// // Initialize
 /// try await sdk.start(config: configuration)
@@ -29,7 +29,7 @@ internal actor HubSDKAdapty {
     private enum State {
         case notInitialized
         case initializing(Task<Void, Error>)
-        case ready(config: StormSDKAdaptyConfiguration, placementBag: PlacementBag)
+        case ready(config: HubSDKAdaptyConfiguration, placementBag: PlacementBag)
         case failed(Error)
     }
     
@@ -37,7 +37,7 @@ internal actor HubSDKAdapty {
         let isReady: Bool
         let hasActiveSubscription: Bool
         let isReviewMode: Bool
-        let config: StormSDKAdaptyConfiguration?
+        let config: HubSDKAdaptyConfiguration?
         let placementBag: PlacementBag?
         
         static let initial = StateSnapshot(
@@ -70,9 +70,9 @@ internal actor HubSDKAdapty {
     /// immediately. Calls with different configurations throw an error.
     ///
     /// - Parameter config: The SDK configuration.
-    /// - Throws: `StormSDKError.initializationFailed` if activation fails.
-    /// - Throws: `StormSDKError.configurationMismatch` if already initialized with different config.
-    public func start(config: StormSDKAdaptyConfiguration) async throws {
+    /// - Throws: `HubSDKError.initializationFailed` if activation fails.
+    /// - Throws: `HubSDKError.configurationMismatch` if already initialized with different config.
+    public func start(config: HubSDKAdaptyConfiguration) async throws {
         switch state {
         case .notInitialized:
             let task = Task {
@@ -116,24 +116,27 @@ internal actor HubSDKAdapty {
     
     // MARK: - Private Methods
     
-    private func performInitialization(config: StormSDKAdaptyConfiguration) async throws {
-        let serverCluster: AdaptyConfiguration.ServerCluster = {
+    private func performInitialization(config: HubSDKAdaptyConfiguration) async throws {
+        let serverCluster: AdaptyServerCluster = {
             if config.chinaClusterEnable && Locale.current.regionCode == "CN" {
                 return .cn
             }
             return .default
         }()
         
-        let adaptyConfig = AdaptyConfiguration
+        var builder = AdaptyConfiguration
             .builder(withAPIKey: config.apiKey)
-            .with(storeKitVersion: config.storeKitVersion)
             .with(serverCluster: serverCluster)
-            .build()
-        
+
+        if let logLevel = config.logLevel {
+            builder = builder.with(logLevel: logLevel)
+        }
+
+        let adaptyConfig = builder.build()
+
         do {
             try await Adapty.activate(with: adaptyConfig)
             try await AdaptyUI.activate()
-            Adapty.logLevel = config.logLevel
             
             await setFallback(config.fallbackName)
             
@@ -179,10 +182,10 @@ internal actor HubSDKAdapty {
         /// Use this method before performing operations that require an initialized SDK.
         ///
         /// - Returns: A tuple containing the current configuration and placement bag.
-        /// - Throws: `StormSDKError.notInitialized` if SDK has not been started.
-        /// - Throws: `StormSDKError.initializationInProgress` if initialization is ongoing.
-        /// - Throws: `StormSDKError.initializationFailed` if previous initialization failed
-    internal func ensureReady() throws -> (StormSDKAdaptyConfiguration, PlacementBag) {
+        /// - Throws: `HubSDKError.notInitialized` if SDK has not been started.
+        /// - Throws: `HubSDKError.initializationInProgress` if initialization is ongoing.
+        /// - Throws: `HubSDKError.initializationFailed` if previous initialization failed
+    internal func ensureReady() throws -> (HubSDKAdaptyConfiguration, PlacementBag) {
         switch state {
         case .ready(let config, let placementBag):
             return (config, placementBag)

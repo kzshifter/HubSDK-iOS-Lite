@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-HubSDK is a modular Swift SDK for iOS that unifies analytics, advertising, and monetization services under a single API. Documentation and comments are in a mix of Russian and English.
+HubSDK-Lite is a modular Swift SDK for iOS that unifies analytics, advertising, and monetization services under a single API. This is a lite version without Skarb SDK. Documentation and comments are in a mix of Russian and English.
 
 - **Language:** Swift 6.0 (strict concurrency)
 - **Platform:** iOS 15.0+
 - **Distribution:** Swift Package Manager only (no CocoaPods/Carthage)
-- **Adapty fork:** Uses a custom fork `gixdev/AdaptySDK-SK1` (StoreKit 1 based), not the official Adapty SPM package
+- **Adapty:** Uses official `adaptyteam/AdaptySDK-iOS` (v3.15.7+, StoreKit 2)
 
 ## Build & Test Commands
 
@@ -44,8 +44,7 @@ HubIntegrationCore  (foundation — Event Bus + protocols, no external deps)
 HubSDKCore + HubIntegrationCore
     ├── HubSDKAdapty        (subscriptions, paywalls, onboarding via Adapty)
     ├── HubGoogleAds        (interstitial, rewarded, banner, app-open ads)
-    ├── HubAppsflyer        (install attribution)
-    └── HubSkarb            (Skarb analytics)
+    └── HubAppsflyer        (install attribution)
 ```
 
 ### Core Patterns
@@ -54,11 +53,11 @@ HubSDKCore + HubIntegrationCore
 
 **`HubDependencyIntegration` protocol** (`HubIntegrationCore/StormIntegration.swift`): Every integration module conforms to this. It requires an associated `Provider` type, a static `name`, and a `start()` method. The provider protocol (e.g., `HubSDKAdaptyProviding`, `HubGoogleAdsProviding`) defines the public API that consumers use.
 
-**`AwaitableIntegration` protocol:** Integrations that need async initialization (Adapty, GoogleAds, Appsflyer, Skarb) also conform to this. They expose `isReady` and `onReady` callback. `HubSDKCore.waitUntilReady()` suspends until all awaited integrations signal readiness (or timeout).
+**`AwaitableIntegration` protocol:** Integrations that need async initialization (Adapty, GoogleAds, Appsflyer) also conform to this. They expose `isReady` and `onReady` callback. `HubSDKCore.waitUntilReady()` suspends until all awaited integrations signal readiness (or timeout).
 
 **Event Bus (`HubIntegrationCore/EventBus/`):** `HubEventBus.shared` enables decoupled inter-module communication. Modules publish `HubEvent` cases (`.conversionDataReceived`, `.successPurchase`, `.event`) and any `HubEventListener` subscriber receives them. Uses `NSHashTable.weakObjects()` for automatic cleanup, `NSLock` for thread safety.
 
-**Event flow:** AppsFlyer → `.conversionDataReceived` → Skarb listens. Adapty/PaywallCoordinator → `.successPurchase` → Facebook, Firebase listen. HubAnalytics → `.event` → Facebook, Firebase listen.
+**Event flow:** Adapty/PaywallCoordinator → `.successPurchase` → Facebook, Firebase listen. HubAnalytics → `.event` → Facebook, Firebase listen.
 
 ### HubSDKAdapty Internals
 
