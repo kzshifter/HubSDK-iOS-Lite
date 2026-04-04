@@ -33,7 +33,7 @@
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kzshifter/HubSDK-Lite", branch: "main")
+    .package(url: "https://github.com/kzshifter/HubSDK-iOS-Lite", branch: "main")
 ]
 ```
 
