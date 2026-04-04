@@ -1,25 +1,25 @@
-# HubSDK-iOS
+# HubSDK-Lite
 
 <p align="center">
   <img src="https://img.shields.io/badge/Swift-6.0-orange.svg" alt="Swift 6.0">
   <img src="https://img.shields.io/badge/iOS-15.0+-blue.svg" alt="iOS 15.0+">
   <img src="https://img.shields.io/badge/SPM-compatible-brightgreen.svg" alt="SPM Compatible">
+  <img src="https://img.shields.io/badge/StoreKit-2-purple.svg" alt="StoreKit 2">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey.svg" alt="MIT License">
 </p>
 
-**HubSDK** — модульный Swift SDK для iOS, объединяющий популярные сервисы аналитики, рекламы и монетизации под единым API.
+**HubSDK-Lite** — облегченная версия HubSDK. Модульный Swift SDK для iOS, объединяющий сервисы аналитики, рекламы и монетизации под единым API. Использует официальный Adapty SDK и StoreKit 2.
 
 ---
 
-## 📦 Модули
+## Модули
 
-| Модуль | Описание |
+| М��дуль | Описание |
 |--------|----------|
 | `HubSDKCore` | Ядро SDK — регистрация и управление интеграциями |
 | `HubSDKAdapty` | Подписки, Paywall, Onboarding, Remote Config (Adapty) |
 | `HubGoogleAds` | Реклама: Interstitial, Rewarded, Banner, AppOpen |
 | `HubAppsflyer` | Атрибуция установок (AppsFlyer) |
-| `HubSkarb` | Аналитика (Skarb) |
 | `HubFacebook` | Facebook SDK интеграция |
 | `HubFirebase` | Firebase Analytics |
 | `HubAnalytics` | Универсальный трекер событий |
@@ -27,13 +27,13 @@
 
 ---
 
-## 📲 Установка
+## Установка
 
 ### Swift Package Manager
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kzshifter/HubSDK-iOS", branch: "main")
+    .package(url: "https://github.com/kzshifter/HubSDK-Lite", branch: "main")
 ]
 ```
 
@@ -47,7 +47,6 @@ dependencies: [
         "HubSDKAdapty",
         "HubGoogleAds",
         "HubAppsflyer",
-        "HubSkarb",
         "HubFacebook",
         "HubAnalytics"
     ]
@@ -56,7 +55,7 @@ dependencies: [
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Инициализация SDK
 
@@ -65,7 +64,6 @@ import HubSDKCore
 import HubSDKAdapty
 import HubGoogleAds
 import HubAppsflyer
-import HubSkarb
 import HubFacebook
 
 final class ApplicationDependency {
@@ -77,13 +75,12 @@ final class ApplicationDependency {
 
     func start(completion: @escaping () -> Void) {
         Task {
-            // 1️⃣ Регистрируем интеграции
+            // 1. Регистрируем интеграции
             await HubSDKCore.shared.register(
                 HubAdaptyIntegration(config: .init(
                     apiKey: "public_live_xxxxx",
                     placementIdentifers: ["main_placement", "settings_placement"],
-                    accessLevels: [.premium],
-                    storeKitVersion: .v2
+                    accessLevels: [.premium]
                 )),
                 awaitReady: true
             )
@@ -105,20 +102,16 @@ final class ApplicationDependency {
             )
 
             await HubSDKCore.shared.register(
-                HubSkarbIntegration(config: .init(clientId: "your_client"))
-            )
-
-            await HubSDKCore.shared.register(
                 HubFacebookIntegration(config: .init())
             )
 
-            // 2️⃣ Запускаем
+            // 2. Запускаем
             await HubSDKCore.shared.run(with: UIApplication.shared)
 
-            // 3️⃣ Ждём готовности
+            // 3. Ждём готовности
             await HubSDKCore.shared.waitUntilReady()
 
-            // 4️⃣ Сохраняем провайдеры
+            // 4. Сохраняем провайдеры
             self.adaptyCore = await HubSDKCore.shared.adapty
             self.googleAdsCore = await HubSDKCore.shared.googleAds
             self.appsflyerCore = await HubSDKCore.shared.appsflyer
@@ -131,7 +124,7 @@ final class ApplicationDependency {
 
 ### 2. Настройка Paywall координатора
 
-После инициализации SDK зарегистрируйте зависимости для `HubPaywallCoordinator`:
+После инициализации SDK заре��истрируйте зависимости для `HubPaywallCoordinator`:
 
 ```swift
 // В completion start() или после waitUntilReady()
@@ -147,7 +140,7 @@ if let adapty = ApplicationDependency.shared.adaptyCore {
 
 ---
 
-## 💰 Подписки и Paywall (HubSDKAdapty)
+## Подписки и Paywall (HubSDKAdapty)
 
 ### Интерфейс `HubSDKAdaptyProviding`
 
@@ -197,7 +190,7 @@ let isLoaded = adapty?.isPlacementLoaded("promo") ?? false
 
 ---
 
-### 🎯 Показ Paywall — `HubPaywallCoordinator`
+### Показ Paywall — `HubPaywallCoordinator`
 
 Координатор управляет полным циклом paywall: загрузка, показ, покупка, восстановление, закрытие.
 
@@ -281,7 +274,7 @@ HubPaywallPresentConfiguration(
 
 ---
 
-### 🖌 Локальные Paywall
+### Локальные Paywall
 
 `HubLocalPaywallHandle` разделяет view controller и state delegate, позволяя использовать любую архитектуру (MVC, MVVM, Coordinator, VIPER).
 
@@ -375,7 +368,7 @@ product.descriptionPeriod(isAdaptiveName: true)      // "monthly"
 // Замена плейсхолдеров
 let text = "Subscribe for %subscriptionPrice% per %subscriptionPeriod%"
 product.replacingPlaceholders(in: text)
-// → "Subscribe for $9.99 per month"
+// -> "Subscribe for $9.99 per month"
 
 // Кастомные плейсхолдеры
 product.replacingPlaceholders(
@@ -386,7 +379,7 @@ product.replacingPlaceholders(
 
 ---
 
-## 🎓 Onboarding (HubSDKAdapty)
+## Onboarding (HubSDKAdapty)
 
 SDK предоставляет интеграцию с Adapty Onboarding — визуальный конструктор онбординга.
 
@@ -427,7 +420,7 @@ let (controller, proxy) = try await adapty.onboardingController(
     }
 }
 
-// ⚠️ Важно: сохраните proxy — он выступает делегатом контроллера
+// Важно: сохраните proxy — он выступает делегатом контроллера
 self.onboardingProxy = proxy
 present(controller, animated: true)
 ```
@@ -475,11 +468,11 @@ let (controller, proxy) = try await adapty.onboardingController(
 
 ---
 
-## 📺 Реклама (HubGoogleAds)
+## Реклама (HubGoogleAds)
 
 ### Info.plist
 
-> ⚠️ **Обязательно** добавьте в `Info.plist`:
+> Обязательно добавьте в `Info.plist`:
 
 ```xml
 <key>GADApplicationIdentifier</key>
@@ -570,7 +563,7 @@ HubGoogleAdsConfiguration(
 
 ---
 
-## 📊 AppsFlyer (HubAppsflyer)
+## AppsFlyer (HubAppsflyer)
 
 ```swift
 let appsflyer = ApplicationDependency.shared.appsflyerCore
@@ -593,7 +586,7 @@ HubAppsflyerConfiguration(
 
 ---
 
-## 📈 Аналитика (HubAnalytics)
+## Аналитика (HubAnalytics)
 
 Универсальный трекер — отправляет во **все** подключённые сервисы (AppsFlyer, Facebook, Firebase).
 
@@ -606,11 +599,11 @@ HubAnalytics.trackSuccessPurchase(amount: 9.99, currency: "USD")
 
 ---
 
-## 📱 Facebook (HubFacebook)
+## Facebook (HubFacebook)
 
 ### Info.plist
 
-> ⚠️ **Обязательно** добавьте в `Info.plist`:
+> Обязательно добавьте в `Info.plist`:
 
 ```xml
 <key>FacebookClientToken</key>
@@ -634,33 +627,7 @@ HubFacebookConfiguration(
 
 ---
 
-## 📡 Skarb (HubSkarb)
-
-```swift
-let skarb = HubSDKCore.shared.integration(ofType: HubSkarbIntegration.self)?.provider
-
-// Ручная отправка source (обычно не нужно — автоматически из AppsFlyer)
-skarb?.sendSource(
-    broker: .appsflyer,
-    features: ["campaign": "summer"],
-    brokerUserID: ""
-)
-```
-
-### Конфигурация
-
-```swift
-HubSkarbConfiguration(
-    clientId: "your_skarb_client_id",
-    observerMode: true
-)
-```
-
-> Skarb автоматически получает conversion data от AppsFlyer через Event Bus.
-
----
-
-## 🔄 Event Bus
+## Event Bus
 
 Модули обмениваются данными через `HubEventBus`. Подписаться на события:
 
@@ -704,23 +671,21 @@ class MyListener: HubEventListener {
 
 | Модуль | Реагирует на |
 |--------|-------------|
-| `HubSkarb` | `.conversionDataReceived` — отправляет source данные |
 | `HubFacebook` | `.successPurchase`, `.event` — трекает в Facebook |
 | `HubFirebase` | `.successPurchase`, `.event` — трекает в Firebase |
 
 ---
 
-## ⚙️ Конфигурации
+## Конфигурации
 
-### StormSDKAdaptyConfiguration
+### HubSDKAdaptyConfiguration
 
 ```swift
-StormSDKAdaptyConfiguration(
+HubSDKAdaptyConfiguration(
     apiKey: String,                    // Adapty Public API Key
     placementIdentifers: [String],     // ID плейсментов для предзагрузки
     accessLevels: [AccessLevel],       // [.premium] или [.custom("vip")]
-    storeKitVersion: .v1 | .v2,        // Версия StoreKit
-    logLevel: .verbose | .error,       // Уровень логов
+    logLevel: .verbose | .error,       // Уровень логов (опционально)
     chinaClusterEnable: true,          // Китайский кластер
     fallbackName: "fallback",          // Имя fallback JSON (опционально)
     languageCode: "en"                 // Код языка для локализации (по умолчанию — из Locale)
@@ -738,7 +703,7 @@ enum AccessLevel {
 
 ---
 
-## 📋 Полный пример интеграции
+## Полный пример интеграции
 
 ```swift
 // AppDelegate.swift
@@ -849,7 +814,18 @@ class SettingsViewController: UIViewController {
 
 ---
 
-## 📄 Требования
+## Отличия от HubSDK
+
+| | HubSDK | HubSDK-Lite |
+|---|--------|-------------|
+| Adapty SDK | Форк `gixdev/AdaptySDK-SK1` | Официальный `adaptyteam/AdaptySDK-iOS` |
+| StoreKit | v1 / v2 (выбор) | Только StoreKit 2 |
+| Skarb | Есть | Убран |
+| Конфигурация | `StormSDKAdaptyConfiguration` | `HubSDKAdaptyConfiguration` |
+
+---
+
+## Требования
 
 - iOS 15.0+
 - Swift 6.0+
@@ -857,6 +833,6 @@ class SettingsViewController: UIViewController {
 
 ---
 
-## 📄 Лицензия
+## Лицензия
 
 MIT License. См. [LICENSE](LICENSE).
