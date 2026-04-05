@@ -515,14 +515,18 @@ ads?.showInterstitial(from: viewController) {
 
 **Rewarded:**
 ```swift
-let rewarded = await ads?.showRewarded(from: viewController)
-if rewarded == true {
+// Возвращает RewardedResult? — nil если юзер не досмотрел
+if let result = await ads?.showRewarded(from: viewController) {
+    print("Revenue: \(result.revenue) \(result.currencyCode)")
     self.giveReward()
 }
 
 // Или с callback:
-ads?.showRewarded(from: viewController) { rewarded in
-    if rewarded { self.giveReward() }
+ads?.showRewarded(from: viewController) { result in
+    if let result {
+        print("Revenue: \(result.revenue) \(result.currencyCode)")
+        self.giveReward()
+    }
 }
 ```
 
@@ -805,8 +809,8 @@ class SettingsViewController: UIViewController {
     }
 
     @IBAction func watchAdTapped() {
-        ApplicationDependency.shared.googleAdsCore?.showRewarded(from: self) { rewarded in
-            if rewarded { self.giveBonus() }
+        ApplicationDependency.shared.googleAdsCore?.showRewarded(from: self) { result in
+            if result != nil { self.giveBonus() }
         }
     }
 }

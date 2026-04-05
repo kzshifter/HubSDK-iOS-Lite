@@ -9,6 +9,12 @@ public extension HubSDKCore {
     }
 }
 
+public struct RewardedResult: Sendable {
+    public let revenue: Double
+    public let currencyCode: String
+    public let precision: Int
+}
+
 public struct AdType: OptionSet, Sendable, Hashable {
     public let rawValue: Int
     
@@ -31,11 +37,11 @@ public protocol HubGoogleAdsProviding: Sendable {
     var isAppOpenReady: Bool { get }
     
     func showInterstitial(from viewController: UIViewController?) async
-    func showRewarded(from viewController: UIViewController?) async -> Bool
+    func showRewarded(from viewController: UIViewController?) async -> RewardedResult?
     func showAppOpen(from viewController: UIViewController?) async
     
     func showInterstitial(from viewController: UIViewController?, completion: (() -> Void)?)
-    func showRewarded(from viewController: UIViewController?, completion: ((_ rewarded: Bool) -> Void)?)
+    func showRewarded(from viewController: UIViewController?, completion: ((_ result: RewardedResult?) -> Void)?)
     func showAppOpen(from viewController: UIViewController?, completion: (() -> Void)?)
     
     func createBanner(in viewController: UIViewController, size: AdSize) -> BannerView
@@ -48,7 +54,7 @@ public extension HubGoogleAdsProviding {
         await showInterstitial(from: viewController)
     }
     
-    func showRewarded(from viewController: UIViewController? = nil) async -> Bool {
+    func showRewarded(from viewController: UIViewController? = nil) async -> RewardedResult? {
         await showRewarded(from: viewController)
     }
     
@@ -61,7 +67,7 @@ public extension HubGoogleAdsProviding {
         showInterstitial(from: viewController, completion: completion)
     }
     
-    func showRewarded(from viewController: UIViewController? = nil, completion: ((_ rewarded: Bool) -> Void)? = nil) {
+    func showRewarded(from viewController: UIViewController? = nil, completion: ((_ result: RewardedResult?) -> Void)? = nil) {
         showRewarded(from: viewController, completion: completion)
     }
     
@@ -169,6 +175,7 @@ internal final class HubGoogleAds: NSObject, HubGoogleAdsProviding {
     
     private var retryCount: [AdType: Int] = [:]
     private var presentationContinuation: CheckedContinuation<Bool, Never>?
+    private var lastRewardedResult: RewardedResult?
     
     // MARK: - Wait State
     
@@ -277,24 +284,33 @@ internal final class HubGoogleAds: NSObject, HubGoogleAdsProviding {
         }
     }
     
-    func showRewarded(from viewController: UIViewController?) async -> Bool {
+    func showRewarded(from viewController: UIViewController?) async -> RewardedResult? {
         guard let ad = rewardedAd else {
             loadRewarded()
-            return false
+            return nil
         }
-        
-        guard let vc = viewController ?? rootViewController else { return false }
-        
+
+        guard let vc = viewController ?? rootViewController else { return nil }
+
         var rewarded = false
-        
+        lastRewardedResult = nil
+
+        ad.paidEventHandler = { [weak self] adValue in
+            self?.lastRewardedResult = RewardedResult(
+                revenue: adValue.value.doubleValue,
+                currencyCode: adValue.currencyCode,
+                precision: adValue.precision.rawValue
+            )
+        }
+
         _ = await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             self.presentationContinuation = continuation
             ad.present(from: vc) {
                 rewarded = true
             }
         }
-        
-        return rewarded
+
+        return rewarded ? lastRewardedResult : nil
     }
     
     func showAppOpen(from viewController: UIViewController?) async {
@@ -316,10 +332,10 @@ internal final class HubGoogleAds: NSObject, HubGoogleAdsProviding {
         }
     }
     
-    func showRewarded(from viewController: UIViewController?, completion: ((_ rewarded: Bool) -> Void)?) {
+    func showRewarded(from viewController: UIViewController?, completion: ((_ result: RewardedResult?) -> Void)?) {
         Task {
-            let rewarded = await showRewarded(from: viewController)
-            completion?(rewarded)
+            let result = await showRewarded(from: viewController)
+            completion?(result)
         }
     }
     
