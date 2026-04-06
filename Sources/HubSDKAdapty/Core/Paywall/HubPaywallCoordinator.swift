@@ -131,7 +131,7 @@ public final class HubPaywallCoordinator {
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration = .init(),
         userInfo: [String: Any] = [:],
-        assetsResolver: (any AdaptyUIAssetsResolver)? = nil,
+        assetsResolver: (any AdaptyAssetsResolver)? = nil,
         onAction: ActionHandler? = nil
     ) async throws -> HubPaywallCoordinator {
         guard let sdk = _sdk else {
@@ -210,7 +210,7 @@ public final class HubPaywallCoordinator {
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration,
         userInfo: [String: Any],
-        assetsResolver: (any AdaptyUIAssetsResolver)?,
+        assetsResolver: (any AdaptyAssetsResolver)?,
         onAction: ActionHandler?
     ) async throws {
         self.actionHandler = onAction
@@ -235,7 +235,7 @@ public final class HubPaywallCoordinator {
         entry: PlacementEntry,
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration,
-        assetsResolver: (any AdaptyUIAssetsResolver)?
+        assetsResolver: (any AdaptyAssetsResolver)?
     ) async throws {
         let paywallConfig = try await AdaptyUI.getPaywallConfiguration(forPaywall: entry.paywall, assetsResolver: assetsResolver)
         let controller = try AdaptyUI.paywallController(with: paywallConfig, delegate: self)
