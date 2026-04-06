@@ -1,4 +1,5 @@
 import Adapty
+import AdaptyUI
 import Foundation
 import HubSDKAdapty
 import UIKit
@@ -173,7 +174,39 @@ func quickShow(from vc: UIViewController) {
 
 
 // ============================================================================
-// MARK: 5. Local Paywall Provider — MVVM / SwiftUI
+// MARK: 5. Custom Assets — видео, изображения для builder пейволлов
+// ============================================================================
+
+/// Передай assetsResolver в show() для кастомных медиа-ресурсов в builder пейволлах.
+func showPaywallWithCustomAssets(from vc: UIViewController) {
+    Task { @MainActor in
+        var assets: [String: AdaptyCustomAsset] = [:]
+
+        if let videoURL = Bundle.main.url(forResource: "hero_video", withExtension: "mp4"),
+           let preview = UIImage(named: "hero_video") {
+            assets["hero_video"] = .video(.file(url: videoURL, preview: .uiImage(value: preview)))
+        }
+
+        try await HubPaywallCoordinator.show(
+            placementId: "premium",
+            from: vc,
+            assetsResolver: assets.isEmpty ? nil : assets
+        ) { action in
+            switch action {
+            case .purchase(let result) where result.isPurchaseSuccess:
+                print("Purchased!")
+            case .close:
+                print("Closed")
+            default:
+                break
+            }
+        }
+    }
+}
+
+
+// ============================================================================
+// MARK: 6. Local Paywall Provider — MVVM / SwiftUI
 // ============================================================================
 
 /// ViewModel получает products и delegate типизированно.
@@ -183,6 +216,7 @@ final class AppLocalPaywallProvider: HubLocalPaywallProvider {
 
     func makePaywall(
         for identifier: String,
+        placementId: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate,
         configuration: HubPaywallPresentConfiguration,
@@ -261,7 +295,7 @@ final class MainPaywallViewModel: ObservableObject, HubLocalPaywallStateDelegate
 
 
 // ============================================================================
-// MARK: 6. Local Paywall Provider — MVC
+// MARK: 7. Local Paywall Provider — MVC
 // ============================================================================
 
 /// В MVC ViewController сам является stateDelegate.
@@ -270,6 +304,7 @@ final class MVCLocalPaywallProvider: HubLocalPaywallProvider {
 
     func makePaywall(
         for identifier: String,
+        placementId: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate,
         configuration: HubPaywallPresentConfiguration,
@@ -282,7 +317,7 @@ final class MVCLocalPaywallProvider: HubLocalPaywallProvider {
 
 
 // ============================================================================
-// MARK: 7. Local Paywall Provider — Coordinator
+// MARK: 8. Local Paywall Provider — Coordinator
 // ============================================================================
 
 /// Координатор создаёт VC, управляет dismiss через onDismiss.
@@ -293,6 +328,7 @@ final class CoordinatorLocalPaywallProvider: HubLocalPaywallProvider {
 
     func makePaywall(
         for identifier: String,
+        placementId: String,
         products: [AdaptyPaywallProduct],
         delegate: HubLocalPaywallDelegate,
         configuration: HubPaywallPresentConfiguration,

@@ -120,6 +120,7 @@ public final class HubPaywallCoordinator {
     ///   - placementId: The placement identifier from the Adapty Dashboard.
     ///   - viewController: The view controller to present from.
     ///   - config: Presentation and behavior configuration.
+    ///   - assetsResolver: Optional custom asset resolver for builder paywalls (videos, images, fonts, etc.).
     ///   - onAction: Optional closure called for each paywall action.
     /// - Returns: The coordinator instance. Retain it only if you need external dismiss control.
     /// - Throws: `HubSDKError.notInitialized` if `resolve()` has not been called.
@@ -130,6 +131,7 @@ public final class HubPaywallCoordinator {
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration = .init(),
         userInfo: [String: Any] = [:],
+        assetsResolver: (any AdaptyUIAssetsResolver)? = nil,
         onAction: ActionHandler? = nil
     ) async throws -> HubPaywallCoordinator {
         guard let sdk = _sdk else {
@@ -146,6 +148,7 @@ public final class HubPaywallCoordinator {
             from: viewController,
             config: config,
             userInfo: userInfo,
+            assetsResolver: assetsResolver,
             onAction: onAction
         )
 
@@ -207,6 +210,7 @@ public final class HubPaywallCoordinator {
         from viewController: UIViewController,
         config: HubPaywallPresentConfiguration,
         userInfo: [String: Any],
+        assetsResolver: (any AdaptyUIAssetsResolver)?,
         onAction: ActionHandler?
     ) async throws {
         self.actionHandler = onAction
@@ -218,7 +222,7 @@ public final class HubPaywallCoordinator {
 
         switch entry.identifier {
         case .builder:
-            try await showBuilderPaywall(entry: entry, from: viewController, config: config)
+            try await showBuilderPaywall(entry: entry, from: viewController, config: config, assetsResolver: assetsResolver)
         case .local(let identifier):
             await sdk.logPaywall(with: entry.paywall)
             try showLocalPaywall(identifier: identifier, entry: entry, from: viewController, config: config, userInfo: userInfo)
@@ -230,9 +234,10 @@ public final class HubPaywallCoordinator {
     private func showBuilderPaywall(
         entry: PlacementEntry,
         from viewController: UIViewController,
-        config: HubPaywallPresentConfiguration
+        config: HubPaywallPresentConfiguration,
+        assetsResolver: (any AdaptyUIAssetsResolver)?
     ) async throws {
-        let paywallConfig = try await AdaptyUI.getPaywallConfiguration(forPaywall: entry.paywall)
+        let paywallConfig = try await AdaptyUI.getPaywallConfiguration(forPaywall: entry.paywall, assetsResolver: assetsResolver)
         let controller = try AdaptyUI.paywallController(with: paywallConfig, delegate: self)
         
         presentedViewController = controller
@@ -252,6 +257,7 @@ public final class HubPaywallCoordinator {
 
         guard let handle = provider.makePaywall(
             for: identifier,
+            placementId: entry.placementId,
             products: entry.products,
             delegate: self,
             configuration: config,
