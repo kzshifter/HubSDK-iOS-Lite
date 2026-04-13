@@ -34,7 +34,13 @@ public final class HubEventBus: @unchecked Sendable {
         lock.lock()
         let currentListeners = listeners.allObjects.compactMap { $0 as? HubEventListener }
         lock.unlock()
-        
-        currentListeners.forEach { $0.handle(event: event) }
+
+        if Thread.isMainThread {
+            currentListeners.forEach { $0.handle(event: event) }
+        } else {
+            DispatchQueue.main.async {
+                currentListeners.forEach { $0.handle(event: event) }
+            }
+        }
     }
 }

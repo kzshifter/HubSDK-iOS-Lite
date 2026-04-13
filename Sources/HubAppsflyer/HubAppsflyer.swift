@@ -73,6 +73,7 @@ internal final class HubAppsflyer: NSObject, HubAppsflyerProviding, @unchecked S
         AppsFlyerLib.shared().isDebug = config.debug
         AppsFlyerLib.shared().waitForATTUserAuthorization(timeoutInterval: config.waitForATT)
         AppsFlyerLib.shared().start()
+        HubEventBus.shared.subscribe(self)
     }
 }
 
@@ -95,7 +96,7 @@ extension HubAppsflyer: AppsFlyerLibDelegate {
     }
 }
 
-extension AppsFlyerLib: HubEventListener {
+extension HubAppsflyer: HubEventListener {
     public func handle(event: HubEvent) {
         // track cases custom event and purchase
         switch event {

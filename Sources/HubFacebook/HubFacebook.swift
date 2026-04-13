@@ -13,9 +13,10 @@ final class HubFacebook: HubFacebookProviding, @unchecked Sendable {
     func start() {
         Settings.shared.isAdvertiserIDCollectionEnabled = config.advertiserIDCollectionEnabled
         Settings.shared.isAutoLogAppEventsEnabled = config.autoLogAppEventsEnabled
-        
+
         ApplicationDelegate.shared.initializeSDK()
         AppEvents.shared.activateApp()
+        HubEventBus.shared.subscribe(self)
     }
     
     func application(_ application: UIApplication, continue userActivity: NSUserActivity) {
