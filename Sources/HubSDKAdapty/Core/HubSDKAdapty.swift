@@ -262,8 +262,8 @@ internal actor HubSDKAdapty {
     }
 }
 
-extension HubSDKAdapty: @preconcurrency HubEventListener {
-     func handle(event: HubEvent) {
+extension HubSDKAdapty: HubEventListener {
+    nonisolated func handle(event: HubEvent) {
         switch event {
         case .conversionDataReceived(let id, let conversionData):
             Task {
