@@ -260,3 +260,14 @@ internal actor HubSDKAdapty {
         }
     }
 }
+
+extension HubSDKAdapty: @preconcurrency HubEventListener {
+     func handle(event: HubEvent) {
+        switch event {
+        case .conversionDataReceived(let conversionData):
+            Adapty.updateAttribution(conversionData, source: "appsflyer_id")
+        default:
+            break
+        }
+    }
+}

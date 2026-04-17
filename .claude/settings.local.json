@@ -5,7 +5,11 @@
       "Bash(swift build:*)",
       "Bash(xcodebuild:*)",
       "Bash(xcrun simctl:*)",
-      "Bash(find /Users/ios-ivanchanka/Desktop/WorkProjects/AppstormApps/HubSDK/Example -type f -name *.swift)"
+      "Bash(find /Users/ios-ivanchanka/Desktop/WorkProjects/AppstormApps/HubSDK/Example -type f -name *.swift)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
     ]
   }
 }
