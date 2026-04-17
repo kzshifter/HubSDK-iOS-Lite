@@ -75,6 +75,7 @@ internal actor HubSDKAdapty {
     public func start(config: HubSDKAdaptyConfiguration) async throws {
         switch state {
         case .notInitialized:
+            HubEventBus.shared.subscribe(self)
             let task = Task {
                 try await performInitialization(config: config)
             }
