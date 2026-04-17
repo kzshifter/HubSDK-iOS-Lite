@@ -1,7 +1,7 @@
 import Foundation
 
 public enum HubEvent: @unchecked Sendable {
-    case conversionDataReceived([String: String])
+    case conversionDataReceived(appsflyerId: String, data: [String: String])
     case successPurchase(amount: Double, currency: String)
     case event(name: String, params: [String: Any])
 }

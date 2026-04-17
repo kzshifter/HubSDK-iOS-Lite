@@ -264,8 +264,11 @@ internal actor HubSDKAdapty {
 extension HubSDKAdapty: @preconcurrency HubEventListener {
      func handle(event: HubEvent) {
         switch event {
-        case .conversionDataReceived(let conversionData):
-            Adapty.updateAttribution(conversionData, source: "appsflyer_id")
+        case .conversionDataReceived(let id, let conversionData):
+            Task {
+                try? await Adapty.setIntegrationIdentifier(key: "appsflyer_id", value: id)
+                try? await Adapty.updateAttribution(conversionData, source: "appsflyer")
+            }
         default:
             break
         }

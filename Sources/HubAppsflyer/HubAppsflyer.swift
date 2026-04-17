@@ -87,7 +87,10 @@ extension HubAppsflyer: AppsFlyerLibDelegate {
             }
         }
         
-        HubEventBus.shared.publish(.conversionDataReceived(sendableData))
+        HubEventBus
+            .shared
+            .publish(.conversionDataReceived(appsflyerId: AppsFlyerLib.shared().getAppsFlyerUID(),
+                                                           data: sendableData))
         onReady?()
     }
     
